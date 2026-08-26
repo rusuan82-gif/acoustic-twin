@@ -11,7 +11,6 @@ permissions:
   id-token: write
 
 jobs:
-  # JOB 1: Antrenare + Web
   train-and-web:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -46,13 +45,11 @@ jobs:
             echo "⚠️ Warning: index.html not found"
           fi
 
-      # ✅ FIX 1: upload-pages-artifact creează AUTOMAT artifactul "github-pages"
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: web-artifacts/
 
-  # JOB 2: Deploy Pages (Simplificat - nu mai e nevoie de download manual)
   deploy-pages:
     needs: train-and-web
     runs-on: ubuntu-latest
@@ -64,7 +61,6 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-  # JOB 3: APK
   build-apk:
     needs: train-and-web
     runs-on: ubuntu-latest
@@ -120,8 +116,8 @@ jobs:
           mkdir -p android/app/src/main/kotlin/com/example/acoustic_twin
           cp custom/MainActivity.kt android/app/src/main/kotlin/com/example/acoustic_twin/MainActivity.kt
           
-          # ✅ FIX 2: Înlocuim VARIABILA flutter.minSdkVersion, nu rescriem linia
-          sed -i 's/flutter\.minSdkVersion/24/g' android/app/build.gradle
+          # ✅ FIX: minSdkVersion 26 (necesar pentru tflite_flutter)
+          sed -i 's/flutter\.minSdkVersion/26/g' android/app/build.gradle
 
       - name: Build APK
         if: steps.check_flutter.outputs.flutter_exists == 'true'
