@@ -98,7 +98,7 @@ jobs:
       - name: Prepare Baseline JSON
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: |
-          # ✅ FIX CRITIC: Instalăm numpy DOAR pentru acest pas
+          # ✅ FIX: Instalăm numpy DOAR pentru acest pas
           pip install numpy==1.26.4 --quiet
           
           mkdir -p assets/models
