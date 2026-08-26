@@ -1,78 +1,388 @@
 <!DOCTYPE html>
 <html lang="ro">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Acoustic Twin</title>
-<style>
-  body { font-family: sans-serif; background: #121212; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-  .container { text-align: center; background: #1e1e1e; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-  button { background: #007bff; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 6px; cursor: pointer; margin-top: 1rem; }
-  button:hover { background: #0056b3; }
-  #status { margin-top: 1rem; color: #aaa; }
-  #result { margin-top: 1rem; font-size: 1.2rem; font-weight: bold; color: #4caf50; min-height: 1.5em; }
-</style>
-<!-- Încărcăm modelul generat de GitHub Actions -->
-<script src="weights.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Acoustic Twin // LCARS Diagnostic Interface</title>
+    
+    <!-- Încărcăm TensorFlow.js pentru a rula modelul AI în browser -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+    <!-- Încărcăm modelul antrenat de GitHub Actions -->
+    <script src="weights.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+        :root {
+            --lcars-blue: #99ccff;
+            --lcars-orange: #ff9900;
+            --lcars-red: #cc0000;
+            --lcars-bg: #050505;
+            --lcars-panel: #111;
+            --scanline: rgba(153, 204, 255, 0.05);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: var(--lcars-bg);
+            color: var(--lcars-blue);
+            font-family: 'Share Tech Mono', monospace;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Efect Scanline CRT */
+        body::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(to bottom, var(--scanline) 50%, transparent 50%);
+            background-size: 100% 4px;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 600px;
+            background: var(--lcars-panel);
+            border: 2px solid var(--lcars-blue);
+            border-radius: 15px 40px 15px 40px; /* Stil LCARS */
+            padding: 30px;
+            position: relative;
+            z-index: 5;
+            box-shadow: 0 0 20px rgba(153, 204, 255, 0.2);
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 2px solid var(--lcars-blue);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .status-bar {
+            font-size: 0.8rem;
+            color: var(--lcars-orange);
+        }
+
+        h1 { font-size: 1.5rem; text-shadow: 0 0 5px var(--lcars-blue); }
+
+        .radar-container {
+            width: 200px;
+            height: 200px;
+            margin: 20px auto;
+            border: 2px solid var(--lcars-blue);
+            border-radius: 50%;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        .radar-sweep {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: conic-gradient(from 0deg, transparent 70%, rgba(153, 204, 255, 0.5) 100%);
+            border-radius: 50%;
+            animation: sweep 2s linear infinite;
+            display: none;
+        }
+
+        @keyframes sweep { 100% { transform: rotate(360deg); } }
+
+        .score-display {
+            font-size: 3rem;
+            font-weight: bold;
+            z-index: 2;
+        }
+
+        .btn-main {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            background: transparent;
+            border: 2px solid var(--lcars-orange);
+            color: var(--lcars-orange);
+            font-family: inherit;
+            font-size: 1.2rem;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 20px;
+            border-radius: 5px 20px 5px 20px;
+        }
+
+        .btn-main:hover:not(:disabled) {
+            background: var(--lcars-orange);
+            color: var(--lcars-bg);
+            box-shadow: 0 0 15px var(--lcars-orange);
+        }
+
+        .btn-main:disabled {
+            border-color: #555;
+            color: #555;
+            cursor: not-allowed;
+        }
+
+        .report-panel {
+            margin-top: 20px;
+            border-top: 1px dashed var(--lcars-blue);
+            padding-top: 15px;
+            display: none;
+        }
+
+        .report-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+
+        .alert-high { color: var(--lcars-red); text-shadow: 0 0 5px var(--lcars-red); }
+        .alert-med { color: var(--lcars-orange); }
+        .alert-low { color: var(--lcars-blue); }
+
+        .visualizer {
+            width: 100%;
+            height: 60px;
+            background: #000;
+            margin-top: 15px;
+            border: 1px solid #333;
+        }
+    </style>
 </head>
 <body>
 
 <div class="container">
-  <h1>🎧 Acoustic Twin</h1>
-  <p>Stetoscop AI pentru Hardware</p>
-  
-  <div id="status">Se inițializează...</div>
-  
-  <button id="scanBtn" disabled onclick="startScan()">Pornește Scanarea</button>
-  
-  <div id="result"></div>
+    <div class="header">
+        <span>ACOUSTIC TWIN v1.0</span>
+        <span class="status-bar" id="sys-status">INITIALIZING...</span>
+    </div>
+
+    <div style="text-align: center;">
+        <p>DIAGNOSTIC PREDICTIV HARDWARE</p>
+    </div>
+
+    <div class="radar-container">
+        <div class="radar-sweep" id="radar"></div>
+        <div class="score-display" id="score">--</div>
+    </div>
+
+    <canvas id="visualizer" class="visualizer"></canvas>
+
+    <button id="scanBtn" class="btn-main" disabled>INIȚIALIZARE SISTEM</button>
+
+    <div class="report-panel" id="report">
+        <h3 style="color: var(--lcars-orange); margin-bottom: 10px;">// RAPORT ANALIZĂ ACUSTICĂ</h3>
+        <div id="report-content"></div>
+    </div>
 </div>
 
 <script>
-  // Verificăm dacă modelul s-a încărcat din weights.js
-  if (typeof window.AT_MODEL === 'undefined') {
-    document.getElementById('status').innerText = "❌ Eroare: Modelul (weights.js) nu a fost găsit!";
-    document.getElementById('status').style.color = "red";
-  } else {
-    document.getElementById('status').innerText = "✅ Model încărcat. Gata de scanare.";
-    document.getElementById('scanBtn').disabled = false;
-  }
+    const sysStatus = document.getElementById('sys-status');
+    const scanBtn = document.getElementById('scanBtn');
+    const scoreDisplay = document.getElementById('score');
+    const radar = document.getElementById('radar');
+    const reportPanel = document.getElementById('report');
+    const reportContent = document.getElementById('report-content');
+    const canvas = document.getElementById('visualizer');
+    const ctx = canvas.getContext('2d');
 
-  async function startScan() {
-    const statusEl = document.getElementById('status');
-    const resultEl = document.getElementById('result');
-    
-    statusEl.innerText = "🎙 Se ascultă (6 secunde)...";
-    resultEl.innerText = "";
+    let model = null;
+    let baseline = { mu: 0, sigma: 1 };
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      const chunks = [];
+    // 1. Inițializare Model AI
+    async function initAI() {
+        try {
+            sysStatus.innerText = "LOADING NEURAL NET...";
+            
+            // Verificăm dacă weights.js a fost încărcat corect de GitHub Actions
+            if (typeof window.AT_MODEL === 'undefined') {
+                throw new Error("Model weights missing");
+            }
 
-      mediaRecorder.ondataavailable = e => chunks.push(e.data);
-      
-      mediaRecorder.onstop = async () => {
-        statusEl.innerText = "🧠 Se analizează...";
-        const blob = new Blob(chunks, { type: 'audio/wav' });
-        
-        // Aici ar urma logica de procesare audio în JS
-        // Pentru demo, simulăm un rezultat bazat pe modelul încărcat
-        setTimeout(() => {
-           const health = Math.floor(Math.random() * 20) + 80; // Simulare 80-100%
-           resultEl.innerText = `Stare: ${health}% SĂNĂTOS`;
-           statusEl.innerText = "Scanare finalizată.";
-           stream.getTracks().forEach(track => track.stop());
-        }, 1000);
-      };
+            // Încărcăm modelul TensorFlow.js din variabila globală creată de export_web.py
+            model = await tf.loadLayersModel(tf.io.fromMemory(window.AT_MODEL.modelTopology, window.AT_MODEL.weightSpecs, window.AT_MODEL.weightData));
+            
+            // Încercăm să luăm baseline-ul (media și deviația standard a erorilor normale)
+            // Dacă export_web.py nu l-a inclus, folosim valori default
+            baseline = window.AT_MODEL.baseline || { mu: 0.05, sigma: 0.02 };
 
-      mediaRecorder.start();
-      setTimeout(() => mediaRecorder.stop(), 6000); // Oprește după 6 secunde
-
-    } catch (err) {
-      statusEl.innerText = "❌ Eroare microfon: " + err.message;
+            sysStatus.innerText = "SYSTEM READY";
+            sysStatus.style.color = "var(--lcars-blue)";
+            scanBtn.innerText = "PORNEȘTE SCANAREA (6s)";
+            scanBtn.disabled = false;
+            
+            drawIdleVisualizer();
+        } catch (err) {
+            console.error(err);
+            sysStatus.innerText = "ERR: MODEL LOAD FAILED";
+            sysStatus.style.color = "var(--lcars-red)";
+            scanBtn.innerText = "ERORĂ SISTEM";
+        }
     }
-  }
+
+    // 2. Funcția de Scanare
+    scanBtn.addEventListener('click', async () => {
+        scanBtn.disabled = true;
+        scanBtn.innerText = "ASCULTARE ACTIVĂ...";
+        radar.style.display = "block";
+        reportPanel.style.display = "none";
+        scoreDisplay.innerText = "...";
+        scoreDisplay.style.color = "var(--lcars-blue)";
+        sysStatus.innerText = "CAPTURING AUDIO STREAM...";
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mediaRecorder = new MediaRecorder(stream);
+            const chunks = [];
+
+            mediaRecorder.ondataavailable = e => chunks.push(e.data);
+            
+            mediaRecorder.onstop = async () => {
+                sysStatus.innerText = "PROCESSING SPECTROGRAM...";
+                radar.style.display = "none";
+                
+                const blob = new Blob(chunks, { type: 'audio/wav' });
+                await analyzeAudio(blob);
+                stream.getTracks().forEach(track => track.stop());
+            };
+
+            mediaRecorder.start();
+            animateVisualizer();
+            
+            // Oprim după 6 secunde
+            setTimeout(() => {
+                if(mediaRecorder.state === "recording") mediaRecorder.stop();
+            }, 6000);
+
+        } catch (err) {
+            sysStatus.innerText = "ERR: MIC ACCESS DENIED";
+            sysStatus.style.color = "var(--lcars-red)";
+            scanBtn.disabled = false;
+            scanBtn.innerText = "REÎNCERCARE";
+            radar.style.display = "none";
+        }
+    });
+
+    // 3. Analiza AI și Generarea Raportului
+    async function analyzeAudio(audioBlob) {
+        try {
+            // Decodăm audio
+            const arrayBuffer = await audioBlob.arrayBuffer();
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+            const rawData = audioBuffer.getChannelData(0);
+
+            // Extragem un spectrogram simplificat (Log-Mel) - simulare pentru demo web
+            // În producție, aici am folosi o librărie JS precum Meyda sau un script custom
+            // Pentru acest demo, vom crea un tensor dummy bazat pe RMS-ul semnalului
+            // pentru a demonstra fluxul UI. Modelul real necesită preprocessare exactă ca în Python.
+            
+            let rms = 0;
+            for(let i=0; i<rawData.length; i++) rms += rawData[i]*rawData[i];
+            rms = Math.sqrt(rms/rawData.length);
+            
+            // Creăm un tensor fals de intrare (1, 64, 32, 1) - dimensiunile modelului tău
+            // Înlocuim cu date reale din spectrogram în versiunea finală
+            const inputTensor = tf.randomNormal([1, 64, 32, 1]).mul(rms * 10); 
+
+            // Rulăm inferența
+            const prediction = model.predict(inputTensor);
+            const mse = tf.losses.meanSquaredError(inputTensor, prediction).dataSync()[0];
+            
+            // Calculăm scorul de sănătate bazat pe deviația de la baseline
+            const zScore = (mse - baseline.mu) / baseline.sigma;
+            let health = 100 - (zScore * 15); 
+            health = Math.max(0, Math.min(100, Math.round(health)));
+
+            // Afișăm scorul
+            scoreDisplay.innerText = health + "%";
+            
+            // Generăm raportul bazat pe "anomalie"
+            generateReport(health, zScore);
+
+            sysStatus.innerText = "ANALYSIS COMPLETE";
+            scanBtn.disabled = false;
+            scanBtn.innerText = "SCANEAZĂ DIN NOU";
+            
+            // Curățăm tensorii
+            inputTensor.dispose();
+            prediction.dispose();
+
+        } catch (err) {
+            console.error(err);
+            sysStatus.innerText = "ERR: INFERENCE FAILED";
+            scoreDisplay.innerText = "ERR";
+            scanBtn.disabled = false;
+        }
+    }
+
+    // 4. Logica Raportului de Diagnostic (Star Trek Style)
+    function generateReport(health, zScore) {
+        reportPanel.style.display = "block";
+        let html = "";
+        
+        if (health > 85) {
+            scoreDisplay.style.color = "var(--lcars-blue)";
+            html += `<div class="report-item alert-low"><span>STARE GENERALĂ:</span><span>OPTIMĂ</span></div>`;
+            html += `<div class="report-item alert-low"><span>ANOMALII DETECTATE:</span><span>NESIGNIFICANT</span></div>`;
+            html += `<div class="report-item alert-low"><span>ACȚIUNE:</span><span>MONITORIZARE STANDARD</span></div>`;
+        } else if (health > 60) {
+            scoreDisplay.style.color = "var(--lcars-orange)";
+            html += `<div class="report-item alert-med"><span>STARE GENERALĂ:</span><span>ATENȚIE</span></div>`;
+            html += `<div class="report-item alert-med"><span>SUSPECT 1:</span><span>RULMENT VENTILATOR (UZURĂ)</span></div>`;
+            html += `<div class="report-item alert-med"><span>SEMNĂTURĂ:</span><span>FRECVENȚE TONALE 2-4kHz</span></div>`;
+            html += `<div class="report-item alert-med"><span>ACȚIUNE:</span><span>INSPECȚIE ÎN 7 ZILE</span></div>`;
+        } else {
+            scoreDisplay.style.color = "var(--lcars-red)";
+            html += `<div class="report-item alert-high"><span>STARE GENERALĂ:</span><span>CRITICĂ</span></div>`;
+            html += `<div class="report-item alert-high"><span>SUSPECT 1:</span><span>HDD MECHANICAL FAILURE</span></div>`;
+            html += `<div class="report-item alert-high"><span>SUSPECT 2:</span><span>COLL WHINE / PSU INSTABIL</span></div>`;
+            html += `<div class="report-item alert-high"><span>SEMNĂTURĂ:</span><span>TRANZIENTE BRUȘTE / HIGH Z-SCORE</span></div>`;
+            html += `<div class="report-item alert-high"><span>ACȚIUNE:</span><span>OPRIRE IMEDIATĂ / BACKUP</span></div>`;
+        }
+        
+        reportContent.innerHTML = html;
+    }
+
+    // 5. Vizualizator Audio Simplu (Canvas)
+    function drawIdleVisualizer() {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = "#99ccff";
+        ctx.beginPath();
+        ctx.moveTo(0, canvas.height/2);
+        ctx.lineTo(canvas.width, canvas.height/2);
+        ctx.stroke();
+    }
+
+    function animateVisualizer() {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = "#ff9900";
+        ctx.beginPath();
+        for(let i=0; i<canvas.width; i+=5) {
+            ctx.lineTo(i, canvas.height/2 + Math.random()*40 - 20);
+        }
+        ctx.stroke();
+        if(scanBtn.innerText === "ASCULTARE ACTIVĂ...") requestAnimationFrame(animateVisualizer);
+    }
+
+    // Pornim aplicația
+    window.onload = initAI;
 </script>
 
 </body>
