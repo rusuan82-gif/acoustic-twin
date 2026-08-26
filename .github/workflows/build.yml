@@ -11,7 +11,6 @@ permissions:
   id-token: write
 
 jobs:
-  # JOB 1: Antrenare + Web (Optimizat pentru Python 3.12)
   train-and-web:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -25,13 +24,12 @@ jobs:
       - name: Install Python Packages (Python 3.12 Compatible)
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          # VERSIUNI COMPATIBILE CU PYTHON 3.12
+          # ✅ ACEASTA ESTE LINIA CARE REZOLVĂ EROAREA TA
           pip install numpy==1.26.4 librosa==0.10.2.post1 soundfile==0.12.1
           pip install tensorflow-cpu==2.15.0 --no-deps
           pip install keras==2.15.0 protobuf==3.20.3 h5py==3.10.0 absl-py==2.0.0
           
-          # Verificare critică înainte de antrenare
-          python -c "import tensorflow as tf; print('✅ TF Version:', tf.__version__)"
+          python -c "import tensorflow as tf; print('✅ TF OK:', tf.__version__)"
           python -c "import librosa; print('✅ Librosa OK')"
 
       - name: Train & Export Model
@@ -46,7 +44,7 @@ jobs:
           if [ -f index.html ]; then 
             cp index.html web-artifacts/index.html
           else 
-            echo "⚠️ Warning: index.html not found in repo root"
+            echo "⚠️ Warning: index.html not found"
           fi
 
       - name: Upload Web Artifact
@@ -55,7 +53,6 @@ jobs:
           name: web-files
           path: web-artifacts/
 
-  # JOB 2: Deploy Pages
   deploy-pages:
     needs: train-and-web
     runs-on: ubuntu-latest
@@ -73,7 +70,6 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-  # JOB 3: APK (Doar dacă există pubspec.yaml)
   build-apk:
     needs: train-and-web
     runs-on: ubuntu-latest
