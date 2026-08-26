@@ -11,7 +11,6 @@ permissions:
   id-token: write
 
 jobs:
-  # JOB 1: Antrenare + Web (Optimizat pentru Python 3.12)
   train-and-web:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -25,18 +24,16 @@ jobs:
       - name: Install Python Packages (Python 3.12 Compatible)
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          
-          # ✅ FIX: Versiuni actualizate pentru Python 3.12
+          # ✅ VERSIUNI COMPATIBILE CU PYTHON 3.12
           pip install numpy==1.26.4 librosa==0.10.2.post1 soundfile==0.12.1
           pip install tensorflow==2.17.1
           
-          # Verificare critică înainte de antrenare
           python -c "import tensorflow as tf; print('✅ TF OK:', tf.__version__)"
           python -c "import librosa; print('✅ Librosa OK')"
 
       - name: Train & Export Model
         run: |
-          echo " Starting training..."
+          echo "🚀 Starting training..."
           python train.py --epochs 10
           echo "🚀 Exporting weights..."
           python export_web.py
@@ -55,7 +52,6 @@ jobs:
           name: web-files
           path: web-artifacts/
 
-  # JOB 2: Deploy Pages
   deploy-pages:
     needs: train-and-web
     runs-on: ubuntu-latest
@@ -73,7 +69,6 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-  # JOB 3: APK (Doar dacă există pubspec.yaml)
   build-apk:
     needs: train-and-web
     runs-on: ubuntu-latest
@@ -100,6 +95,8 @@ jobs:
       - name: Prepare Baseline JSON
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: |
+          # ✅ FIX: Instalăm numpy DOAR pentru acest pas ca să generăm json-ul
+          pip install numpy==1.26.4
           mkdir -p assets/models
           python -c "
           import numpy as np, json, os
