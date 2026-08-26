@@ -62,11 +62,11 @@ def main():
     Xf = clips_from(os.path.join(args.path, "faulty"))
     if Xf is not None and len(Xf) > 0:
         err_faulty = frame_errors(model, Xf).mean()
-        print(f"📈 Verificare: eroare normal ≈ {mu:.4f} | anomal ≈ {err_faulty:.4f}")
+        print(f" Verificare: eroare normal ≈ {mu:.4f} | anomal ≈ {err_faulty:.4f}")
     else:
         print("ℹ️ Nu s-au găsit clipuri defecte pentru verificare.")
         
-    print(" Build complet! Fișiere salvate în models/")
+    print("🎉 Build complet! Fișiere salvate în models/")
 
 if __name__ == "__main__":
     main()
