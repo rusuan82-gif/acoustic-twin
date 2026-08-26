@@ -11,7 +11,7 @@ permissions:
   id-token: write
 
 jobs:
-  # JOB 1: Antrenare + Web (Optimizat pentru Python 3.12)
+  # JOB 1: Antrenare + Web
   train-and-web:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -25,7 +25,6 @@ jobs:
       - name: Install Python Packages (Python 3.12 Compatible)
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          # ✅ VERSIUNI COMPATIBILE CU PYTHON 3.12
           pip install numpy==1.26.4 librosa==0.10.2.post1 soundfile==0.12.1
           pip install tensorflow==2.17.1
           
@@ -47,13 +46,13 @@ jobs:
             echo "⚠️ Warning: index.html not found"
           fi
 
-      - name: Upload Web Artifact
-        uses: actions/upload-artifact@v4
+      # ✅ FIX 1: Folosim upload-pages-artifact care creează automat artifactul "github-pages"
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: web-files
           path: web-artifacts/
 
-  # JOB 2: Deploy Pages
+  # JOB 2: Deploy Pages (Simplificat)
   deploy-pages:
     needs: train-and-web
     runs-on: ubuntu-latest
@@ -61,17 +60,11 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Download Web Files
-        uses: actions/download-artifact@v4
-        with:
-          name: web-files
-          path: ./web-deploy
-          
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
 
-  # JOB 3: APK (Doar dacă există pubspec.yaml)
+  # JOB 3: APK
   build-apk:
     needs: train-and-web
     runs-on: ubuntu-latest
@@ -92,15 +85,13 @@ jobs:
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         uses: actions/download-artifact@v4
         with:
-          name: web-files
+          name: github-pages # ✅ Numele corect al artifactului Pages
           path: ./assets/models
           
       - name: Prepare Baseline JSON
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: |
-          # ✅ FIX: Instalăm numpy DOAR pentru acest pas
           pip install numpy==1.26.4 --quiet
-          
           mkdir -p assets/models
           python -c "
           import numpy as np, json, os
@@ -128,7 +119,10 @@ jobs:
           cp custom/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
           mkdir -p android/app/src/main/kotlin/com/example/acoustic_twin
           cp custom/MainActivity.kt android/app/src/main/kotlin/com/example/acoustic_twin/MainActivity.kt
-          sed -i 's/minSdkVersion.*/minSdkVersion 24/' android/app/build.gradle
+          
+          # ✅ FIX 2: Corectăm comanda sed pentru Flutter 3.22+
+          # Înlocuim linia default "flutter.minSdkVersion" cu valoarea 24
+          sed -i 's/flutter\.minSdkVersion/24/g' android/app/build.gradle
 
       - name: Build APK
         if: steps.check_flutter.outputs.flutter_exists == 'true'
