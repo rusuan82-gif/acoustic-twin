@@ -11,32 +11,43 @@ permissions:
   id-token: write
 
 jobs:
-  # JOB 1: Antrenare + Web (Ușor, ~3 min)
+  # JOB 1: Antrenare + Web (Optimizat pentru Python 3.12)
   train-and-web:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       
-      - name: Cache Python deps
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('train.py', 'export_web.py') }}
-
-      - name: Setup Python & Train Model
+      - name: Setup System Dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install numpy==1.24.4 librosa soundfile
+          sudo apt-get update && sudo apt-get install -y libsndfile1 ffmpeg
+
+      - name: Install Python Packages (Python 3.12 Compatible)
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          # VERSIUNI COMPATIBILE CU PYTHON 3.12
+          pip install numpy==1.26.4 librosa==0.10.2.post1 soundfile==0.12.1
           pip install tensorflow-cpu==2.15.0 --no-deps
-          pip install keras==2.15.0 protobuf==3.20.3 h5py==3.10.0
+          pip install keras==2.15.0 protobuf==3.20.3 h5py==3.10.0 absl-py==2.0.0
           
+          # Verificare critică înainte de antrenare
+          python -c "import tensorflow as tf; print('✅ TF Version:', tf.__version__)"
+          python -c "import librosa; print('✅ Librosa OK')"
+
+      - name: Train & Export Model
+        run: |
+          echo "🚀 Starting training..."
           python train.py --epochs 10
+          echo "🚀 Exporting weights..."
           python export_web.py
           
           mkdir -p web-artifacts
           cp weights.js web-artifacts/weights.js
-          cp index.html web-artifacts/index.html 2>/dev/null || true
+          if [ -f index.html ]; then 
+            cp index.html web-artifacts/index.html
+          else 
+            echo "⚠️ Warning: index.html not found in repo root"
+          fi
 
       - name: Upload Web Artifact
         uses: actions/upload-artifact@v4
@@ -58,14 +69,6 @@ jobs:
           name: web-files
           path: ./web-deploy
           
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
-        
-      - name: Upload Pages Artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./web-deploy
-          
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
@@ -78,7 +81,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Check if Flutter project exists
+      - name: Check Flutter Project
         id: check_flutter
         run: |
           if [ -f "pubspec.yaml" ]; then
@@ -94,7 +97,7 @@ jobs:
           name: web-files
           path: ./assets/models
           
-      - name: Prepare Baseline JSON for Flutter
+      - name: Prepare Baseline JSON
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: |
           mkdir -p assets/models
@@ -109,7 +112,7 @@ jobs:
           json.dump(data, open('assets/models/baseline.json', 'w'))
           "
 
-      - name: Cache Flutter
+      - name: Cache Flutter SDK
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         uses: actions/cache@v3
         with:
@@ -132,7 +135,7 @@ jobs:
           cp custom/MainActivity.kt android/app/src/main/kotlin/com/example/acoustic_twin/MainActivity.kt
           sed -i 's/minSdkVersion.*/minSdkVersion 24/' android/app/build.gradle
 
-      - name: Build APK (Optimized)
+      - name: Build APK
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: flutter build apk --debug --no-tree-shake-icons --split-per-abi
 
