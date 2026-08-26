@@ -21,7 +21,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", choices=["synth", "dir"], default="synth")
     ap.add_argument("--path", default="data/wav")
-    ap.add_argument("--epochs", type=int, default=10) # Redus pentru viteză pe CI
+    ap.add_argument("--epochs", type=int, default=10)
     args = ap.parse_args()
 
     if args.data == "synth":
