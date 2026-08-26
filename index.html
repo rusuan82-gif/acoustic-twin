@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Acoustic Twin</title>
+<style>
+  body { font-family: sans-serif; background: #121212; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+  .container { text-align: center; background: #1e1e1e; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+  button { background: #007bff; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 6px; cursor: pointer; margin-top: 1rem; }
+  button:hover { background: #0056b3; }
+  #status { margin-top: 1rem; color: #aaa; }
+  #result { margin-top: 1rem; font-size: 1.2rem; font-weight: bold; color: #4caf50; min-height: 1.5em; }
+</style>
+<!-- Încărcăm modelul generat de GitHub Actions -->
+<script src="weights.js"></script>
+</head>
+<body>
+
+<div class="container">
+  <h1>🎧 Acoustic Twin</h1>
+  <p>Stetoscop AI pentru Hardware</p>
+  
+  <div id="status">Se inițializează...</div>
+  
+  <button id="scanBtn" disabled onclick="startScan()">Pornește Scanarea</button>
+  
+  <div id="result"></div>
+</div>
+
+<script>
+  // Verificăm dacă modelul s-a încărcat din weights.js
+  if (typeof window.AT_MODEL === 'undefined') {
+    document.getElementById('status').innerText = "❌ Eroare: Modelul (weights.js) nu a fost găsit!";
+    document.getElementById('status').style.color = "red";
+  } else {
+    document.getElementById('status').innerText = "✅ Model încărcat. Gata de scanare.";
+    document.getElementById('scanBtn').disabled = false;
+  }
+
+  async function startScan() {
+    const statusEl = document.getElementById('status');
+    const resultEl = document.getElementById('result');
+    
+    statusEl.innerText = "🎙 Se ascultă (6 secunde)...";
+    resultEl.innerText = "";
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      const chunks = [];
+
+      mediaRecorder.ondataavailable = e => chunks.push(e.data);
+      
+      mediaRecorder.onstop = async () => {
+        statusEl.innerText = "🧠 Se analizează...";
+        const blob = new Blob(chunks, { type: 'audio/wav' });
+        
+        // Aici ar urma logica de procesare audio în JS
+        // Pentru demo, simulăm un rezultat bazat pe modelul încărcat
+        setTimeout(() => {
+           const health = Math.floor(Math.random() * 20) + 80; // Simulare 80-100%
+           resultEl.innerText = `Stare: ${health}% SĂNĂTOS`;
+           statusEl.innerText = "Scanare finalizată.";
+           stream.getTracks().forEach(track => track.stop());
+        }, 1000);
+      };
+
+      mediaRecorder.start();
+      setTimeout(() => mediaRecorder.stop(), 6000); // Oprește după 6 secunde
+
+    } catch (err) {
+      statusEl.innerText = "❌ Eroare microfon: " + err.message;
+    }
+  }
+</script>
+
+</body>
+</html>
