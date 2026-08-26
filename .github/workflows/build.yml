@@ -1,0 +1,69 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Antreneaza modelul
+        run: |
+          pip install -q numpy tensorflow==2.15.1 librosa soundfile
+          python train.py --epochs 15
+          python export_web.py
+          cp weights.js web/weights.js
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+      - name: Setup Flutter (doar daca exista fisierele Android)
+        if: hashFiles('pubspec.yaml') != ''
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.22.3
+
+      - name: Build APK
+        if: hashFiles('pubspec.yaml') != ''
+        run: |
+          flutter create . --org com.example --project-name acoustic_twin --platforms android
+          cp custom/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
+          mkdir -p android/app/src/main/kotlin/com/example/acoustic_twin
+          cp custom/MainActivity.kt android/app/src/main/kotlin/com/example/acoustic_twin/MainActivity.kt
+          sed -i 's/flutter.minSdkVersion/24/' android/app/build.gradle
+          flutter pub get
+          flutter build apk --debug
+
+      - name: Upload APK
+        if: hashFiles('pubspec.yaml') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: acoustic-twin-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
