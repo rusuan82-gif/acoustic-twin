@@ -1,0 +1,18 @@
+name: acoustic_twin
+description: Stetoscopul AI pentru hardware
+publish_to: 'none'
+version: 1.0.0+1
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  tflite_flutter: ^0.10.4
+  permission_handler: ^11.3.1
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+flutter:
+  assets:
+    - assets/models/
