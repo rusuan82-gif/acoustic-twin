@@ -66,7 +66,7 @@ def main():
     else:
         print("ℹ️ Nu s-au găsit clipuri defecte pentru verificare.")
         
-    print("🎉 Build complet! Fișiere salvate în models/")
+    print(" Build complet! Fișiere salvate în models/")
 
 if __name__ == "__main__":
     main()
