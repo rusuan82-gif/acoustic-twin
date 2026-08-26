@@ -21,7 +21,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", choices=["synth", "dir"], default="synth")
     ap.add_argument("--path", default="data/wav")
-    ap.add_argument("--epochs", type=int, default=10) # Redus la 10 pentru viteză pe CI
+    ap.add_argument("--epochs", type=int, default=10) # Redus pentru viteză pe CI
     args = ap.parse_args()
 
     if args.data == "synth":
@@ -50,7 +50,6 @@ def main():
     np.savez("models/baseline.npz", mu=mu, sigma=sigma)
     
     # ✅ FIX CRITIC: Activăm TF Select Ops pentru Conv2D în TensorFlow 2.17+
-    # Fără aceste linii, convertorul crapă cu ERROR_NEEDS_FLEX_OPS
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
     converter.target_spec.supported_ops = [
         tf.lite.OpsSet.TFLITE_BUILTINS,
@@ -64,8 +63,6 @@ def main():
     if Xf is not None and len(Xf) > 0:
         err_faulty = frame_errors(model, Xf).mean()
         print(f"📈 Verificare: eroare normal ≈ {mu:.4f} | anomal ≈ {err_faulty:.4f}")
-        if err_faulty <= mu * 1.5:
-            print("⚠️ ATENȚIE: Diferența dintre normal și anomal este mică. Crește epochs sau datele.")
     else:
         print("ℹ️ Nu s-au găsit clipuri defecte pentru verificare.")
         
