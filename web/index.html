@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acoustic Twin 🎧</title>
+<script src="weights.js"></script>
+<style>
+  body{background:#0d1117;color:#fff;font-family:system-ui,sans-serif;display:flex;
+       justify-content:center;align-items:center;min-height:100vh;margin:0}
+  .card{background:#161b22;border-radius:20px;padding:32px;width:340px;text-align:center}
+  h1{color:#22d3ee;font-size:24px;margin:0 0 4px}
+  #status{color:#9ca3af;font-size:14px;min-height:20px}
+  #gauge{width:180px;height:180px;margin:24px auto;position:relative}
+  #gauge svg{transform:rotate(-90deg)}
+  #pct{position:absolute;inset:0;display:flex;flex-direction:column;
+       justify-content:center;align-items:center}
+  #pct b{font-size:44px}
+  #verdict{background:#21262d;border-radius:12px;padding:14px;margin:16px 0;
+           font-size:15px;display:none}
+  button{width:100%;height:54px;border:0;border-radius:12px;background:#f97316;
+         color:#000;font-size:17px;font-weight:700;cursor:pointer}
+  button:disabled{opacity:.5}
+  label.file{display:block;margin-top:12px;color:#9ca3af;font-size:13px;cursor:pointer}
+  canvas{margin-top:16px;border-radius:8px;width:100%;display:none}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Acoustic Twin 🎧</h1>
+  <div id="status">Se încarcă…</div>
+  <div id="gauge">
+    <svg width="180" height="180">
+      <circle cx="90" cy="90" r="80" stroke="#21262d" stroke-width="14" fill="none"/>
+      <circle id="arc" cx="90" cy="90" r="80" stroke="#22d3ee" stroke-width="14"
+              fill="none" stroke-linecap="round"
+              stroke-dasharray="502.6" stroke-dashoffset="502.6"/>
+    </svg>
+    <div id="pct"><b id="hval">--</b><span id="stare">—</span></div>
+  </div>
+  <div id="verdict"></div>
+  <button id="btn" onclick="scan()">Pornește Scanarea</button>
+  <label class="file">sau încarcă un WAV de test
+    <input type="file" accept="audio/*" hidden onchange="loadFile(this)"></label>
+  <canvas id="cv" height="64"></canvas>
+</div>
+<script>
+const SR=16000,NFFT=1024,HOP=512,NMELS=64,FMAX=8000,CLIP=64;
+const M=window.AT_MODEL;
+let FB,CENTERS;
+const $=id=>document.getElementById(id);
+
+if(!M){$('status').textContent='⚠️ Lipsește weights.js — rulează export_web.py și pune fișierul lângă index.html';$('status').style.color='#f87171';$('btn').disabled=true;}
+else{buildFB();$('status').textContent='Gata de scanare.';}
+
+function buildFB(){
+  const hz2mel=f=>2595*Math.log10(1+f/700),mel2hz=m=>700*(Math.pow(10,m/2595)-1);
+  const lo=hz2mel(0),hi=hz2mel(FMAX),nB=NFFT/2+1;
+  CENTERS=[];for(let i=0;i<NMELS;i++)CENTERS.push(mel2hz(lo+(hi-lo)*(i+1)/(NMELS+1)));
+  const hz=[];for(let i=0;i<NMELS+2;i++)hz.push(mel2hz(lo+(hi-lo)*i/(NMELS+1)));
+  const bin=hz.map(f=>Math.floor(f*NFFT/SR));FB=[];
+  for(let f=0;f<NMELS;f++){const row=new Float64Array(nB);
+    const d1=Math.max(1,bin[f+1]-bin[f]),d2=Math.max(1,bin[f+2]-bin[f+1]);
+    for(let k=bin[f];k<=bin[f+1]&&k<nB;k++)row[k]=(k-bin[f])/d1;
+    for(let k=bin[f+1];k<=bin[f+2]&&k<nB;k++)row[k]=(bin[f+2]-k)/d2;
+    FB.push(row);}
+}
+function fft(re,im){const n=re.length;
+  for(let i=1,j=0;i<n;i++){let bit=n>>1;for(;j&bit;bit>>=1)j^=bit;j^=bit;
+    if(i<j){[re[i],re[j]]=[re[j],re[i]];[im[i],im[j]]=[im[j],im[i]];}}
+  for(let len=2;len<=n;len<<=1){const h=len>>1,wr=Math.cos(-2*Math.PI/len),wi=Math.sin(-2*Math.PI/len);
+    for(let i=0;i<n;i+=len){let cr=1,ci=0;
+      for(let k=0;k<h;k++){const ur=re[i+k],ui=im[i+k],
+        vr=re[i+k+h]*cr-im[i+k+h]*ci,vi=re[i+k+h]*ci+im[i+k+h]*cr;
+        re[i+k]=ur+vr;im[i+k]=ui+vi;re[i+k+h]=ur-vr;im[i+k+h]=ui-vi;
+        const nr=cr*wr-ci*wi;ci=cr*wi+ci*wr;cr=nr;}}}}
+function logMel(x){
+  const nF=Math.floor((x.length-NFFT)/HOP)+1,nB=NFFT/2+1;
+  const win=new Float64Array(NFFT);
+  for(let i=0;i<NFFT;i++)win[i]=.5-.5*Math.cos(2*Math.PI*i/(NFFT-1));
+  const db=[];for(let m=0;m<NMELS;m++)db.push(new Float64Array(nF));
+  const re=new Float64Array(NFFT),im=new Float64Array(NFFT),pw=new Float64Array(nB);
+  for(let f=0;f<nF;f++){
+    for(let i=0;i<NFFT;i++){re[i]=x[f*HOP+i]*win[i];im[i]=0;}
+    fft(re,im);
+    for(let k=0;k<nB;k++)pw[k]=re[k]*re[k]+im[k]*im[k];
+    for(let m=0;m<NMELS;m++){let s=0;for(let k=0;k<nB;k++)s+=FB[m][k]*pw[k];
+      db[m][f]=10*Math.log10(s+1e-10);}}
+  let mx=-1e30;for(const r of db)for(const v of r)if(v>mx)mx=v;
+  let mean=0;for(const r of db)for(const v of r)mean+=v-mx;mean/=NMELS*nF;
+  let va=0;for(const r of db)for(const v of r){const d=v-mx-mean;va+=d*d;}
+  const std=Math.sqrt(va/(NMELS*nF))+1e-6;
+  for(let m=0;m<NMELS;m++)for(let f=0;f<nF;f++)db[m][f]=(db[m][f]-mx-mean)/std;
+  return db;
+}
+const relu=t=>{for(let i=0;i<t.data.length;i++)if(t.data[i]<0)t.data[i]=0;return t;};
+function conv(t,K,b){const{h,w,c}=t,co=b.length,
+  o={h,w,c,data:new Float32Array(h*w*co)};
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++)for(let q=0;q<co;q++){let s=b[q];
+    for(let ky=0;ky<3;ky++){const iy=y+ky-1;if(iy<0||iy>=h)continue;
+      for(let kx=0;kx<3;kx++){const ix=x+kx-1;if(ix<0||ix>=w)continue;
+        for(let ci=0;ci<c;ci++)s+=t.data[(iy*w+ix)*c+ci]*K[ky][kx][ci][q];}}
+    o.data[(y*w+x)*co+q]=s;}
+  return o;}
+function pool(t){const h=t.h>>1,w=t.w>>1,o={h,w,c:t.c,data:new Float32Array(h*w*t.c)};
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++)for(let c=0;c<t.c;c++){let m=-1e30;
+    for(let ky=0;ky<2;ky++)for(let kx=0;kx<2;kx++){
+      const v=t.data[((2*y+ky)*t.w+2*x+kx)*t.c+c];if(v>m)m=v;}
+    o.data[(y*w+x)*t.c+c]=m;}return o;}
+function up(t){const h=t.h*2,w=t.w*2,o={h,w,c:t.c,data:new Float32Array(h*w*t.c)};
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++)for(let c=0;c<t.c;c++)
+    o.data[(y*w+x)*t.c+c]=t.data[((y>>1)*t.w+(x>>1))*t.c+c];return o;}
+function forward(t){const W=M.w;
+  t=relu(conv(t,W[0][0],W[0][1]));t=pool(t);
+  t=relu(conv(t,W[1][0],W[1][1]));t=pool(t);
+  t=relu(conv(t,W[2][0],W[2][1]));t=up(t);
+  t=relu(conv(t,W[3][0],W[3][1]));t=up(t);
+  return conv(t,W[4][0],W[4][1]);}
+function winErr(mel,s){
+  const t={h:CLIP,w:NMELS,c:1,data:new Float32Array(CLIP*NMELS)};
+  for(let f=0;f<CLIP;f++)for(let m=0;m<NMELS;m++)t.data[f*NMELS+m]=mel[m][s+f];
+  const o=forward(t);let e=0;
+  for(let i=0;i<t.data.length;i++){const d=o.data[i]-t.data[i];e+=d*d;}
+  return e/t.data.length;}
+function diagnose(mel){
+  const T=mel[0].length,flux=[];
+  for(let t=0;t<T-1;t++){let s=0;
+    for(let m=0;m<NMELS;m++){const d=mel[m][t+1]-mel[m][t];if(d>0)s+=d;}flux.push(s);}
+  const med=[...flux].sort((a,b)=>a-b)[flux.length>>1];
+  const cps=flux.filter(v=>v>6*med).length/((T-1)/(SR/HOP));
+  let mx=0,sum=0,cnt=0;
+  for(let m=0;m<NMELS;m++)if(CENTERS[m]>1500&&CENTERS[m]<6000){
+    let s=0;for(let t=0;t<T;t++)s+=Math.exp(mel[m][t]);const a=s/T;sum+=a;cnt++;if(a>mx)mx=a;}
+  const tonal=cnt?mx/(sum/cnt+1e-9):0;
+  if(cps>1.5)return `Click-uri anormale (${cps.toFixed(1)}/s) → posibil HDD / mecanism.`;
+  if(tonal>8)return 'Șuierat tonal în banda înaltă → rulment / ventilator cu uzură.';
+  return 'Semnătură anormală nespecificată → inspectează echipamentul.';}
+function analyze(x){
+  const mel=logMel(x),T=mel[0].length;let es=0,nw=0;
+  for(let s=0;s+CLIP<=T;s+=32){es+=winErr(mel,s);nw++;}
+  const z=(es/Math.max(1,nw)-M.mu)/M.sigma;
+  const health=Math.round(Math.min(100,Math.max(0,100-z*(100/6))));
+  draw(mel);
+  return{health,verdict:health<85?diagnose(mel):'Semnătură acustică normală.'};}
+function draw(mel){
+  const T=mel[0].length,cv=$('cv');cv.width=T;cv.style.display='block';
+  const ctx=cv.getContext('2d');
+  for(let m=0;m<NMELS;m++)for(let t=0;t<T;t++){
+    const v=Math.min(1,Math.max(0,(mel[m][t]+3)/6));
+    ctx.fillStyle=`rgb(${v*255|0},${v*120|0},${(1-v)*200|0})`;
+    ctx.fillRect(t,NMELS-1-m,1,1);}
+}
+function show(r){
+  $('hval').textContent=r.health+'%';
+  const col=r.health>=85?'#22c55e':r.health>=60?'#f97316':'#ef4444';
+  $('stare').textContent=r.health>=85?'SĂNĂTOS':r.health>=60?'UZURĂ TIMPURIE':'ANOMALIE';
+  $('stare').style.color=col;$('arc').style.stroke=col;
+  $('arc').style.strokeDashoffset=502.6*(1-r.health/100);
+  $('verdict').style.display='block';$('verdict').textContent=r.verdict;}
+function resample(x,sr0){
+  const n=Math.floor(x.length*SR/sr0),out=new Float32Array(n);
+  for(let i=0;i<n;i++){const p=i*sr0/SR,i0=Math.floor(p),t=p-i0;
+    out[i]=x[i0]*(1-t)+x[Math.min(i0+1,x.length-1)]*t;}
+  return out;}
+async function scan(){
+  if(!M)return;
+  $('btn').disabled=true;$('status').textContent='🎙 Se înregistrează (6 s)…';
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    const src=ctx.createMediaStreamSource(stream);
+    const sp=ctx.createScriptProcessor(4096,1,1);
+    const mute=ctx.createGain();mute.gain.value=0;
+    src.connect(sp);sp.connect(mute);mute.connect(ctx.destination);
+    const chunks=[];let got=0;const rate=ctx.sampleRate;
+    sp.onaudioprocess=e=>{const d=e.inputBuffer.getChannelData(0);
+      chunks.push(new Float32Array(d));got+=d.length;};
+    await new Promise(r=>setTimeout(r,6000));
+    sp.disconnect();src.disconnect();stream.getTracks().forEach(t=>t.stop());ctx.close();
+    const full=new Float32Array(got);let o=0;
+    for(const c of chunks){full.set(c,o);o+=c.length;}
+    $('status').textContent='Se analizează…';
+    await new Promise(r=>setTimeout(r,50));
+    show(analyze(resample(full,rate)));
+    $('status').textContent='Scanare finalizată.';
+  }catch(e){$('status').textContent='Eroare microfon: '+e.message;}
+  $('btn').disabled=false;}
+async function loadFile(inp){
+  if(!M||!inp.files[0])return;
+  $('status').textContent='Se analizează…';
+  const ctx=new(window.AudioContext||window.webkitAudioContext)();
+  const buf=await ctx.decodeAudioData(await inp.files[0].arrayBuffer());
+  show(analyze(resample(buf.getChannelData(0),buf.sampleRate)));
+  ctx.close();$('status').textContent='Scanare finalizată.';}
+</script>
+</body>
+</html>
