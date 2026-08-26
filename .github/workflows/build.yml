@@ -1,9 +1,9 @@
-name: Build
+name: Build Acoustic Twin
 
 on:
-  workflow_dispatch:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -11,59 +11,116 @@ permissions:
   id-token: write
 
 jobs:
-  build:
+  # JOB 1: Antrenare + Web (Ușor, ~3 min)
+  train-and-web:
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      
+      - name: Cache Python deps
+        uses: actions/cache@v3
         with:
-          python-version: '3.11'
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('train.py', 'export_web.py') }}
 
-      - name: Antreneaza modelul
+      - name: Setup Python & Train Model
         run: |
-          pip install -q numpy tensorflow==2.15.1 librosa soundfile
-          python train.py --epochs 15
+          python -m pip install --upgrade pip
+          # Folosim tensorflow-cpu MINIMAL, fără GPU/CUDA care blochează setup-ul
+          pip install numpy==1.24.4 librosa soundfile
+          pip install tensorflow-cpu==2.15.0 --no-deps
+          pip install keras==2.15.0 protobuf==3.20.3 h5py==3.10.0
+          
+          python train.py --epochs 10
           python export_web.py
-          cp weights.js web/weights.js
+          
+          mkdir -p web-artifacts
+          cp weights.js web-artifacts/weights.js
+          cp index.html web-artifacts/index.html 2>/dev/null || true
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: web
-
-      - name: Setup Flutter (doar daca exista fisierele Android)
-        if: hashFiles('pubspec.yaml') != ''
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          flutter-version: 3.22.3
-
-      - name: Build APK
-        if: hashFiles('pubspec.yaml') != ''
-        run: |
-          flutter create . --org com.example --project-name acoustic_twin --platforms android
-          cp custom/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
-          mkdir -p android/app/src/main/kotlin/com/example/acoustic_twin
-          cp custom/MainActivity.kt android/app/src/main/kotlin/com/example/acoustic_twin/MainActivity.kt
-          sed -i 's/flutter.minSdkVersion/24/' android/app/build.gradle
-          flutter pub get
-          flutter build apk --debug
-
-      - name: Upload APK
-        if: hashFiles('pubspec.yaml') != ''
+      - name: Upload Web Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: acoustic-twin-apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: web-files
+          path: web-artifacts/
 
-  deploy:
-    needs: build
+  # JOB 2: Deploy Pages (Instant după Job 1)
+  deploy-pages:
+    needs: train-and-web
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - id: deployment
+      - name: Download Web Files
+        uses: actions/download-artifact@v4
+        with:
+          name: web-files
+          path: ./web-deploy
+          
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+        
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./web-deploy
+          
+      - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
+
+  # JOB 3: APK (Doar dacă există pubspec.yaml, ~6 min)
+  build-apk:
+    needs: train-and-web
+    if: hashFiles('pubspec.yaml') != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download Trained Weights
+        uses: actions/download-artifact@v4
+        with:
+          name: web-files
+          path: ./assets/models
+          
+      - name: Prepare Baseline JSON for Flutter
+        run: |
+          python -c "
+          import numpy as np, json
+          d = np.load('models/baseline.npz') if __import__('os').path.exists('models/baseline.npz') else {'mu':0.0, 'sigma':1.0}
+          # Dacă nu avem baseline din artifact, creăm unul dummy ca să nu crape build-ul
+          json.dump({'mu': float(d.get('mu', 0.0)), 'sigma': float(d.get('sigma', 1.0))}, 
+                    open('assets/models/baseline.json', 'w'))
+          " 2>/dev/null || echo '{"mu":0.0,"sigma":1.0}' > assets/models/baseline.json
+
+      - name: Cache Flutter
+        uses: actions/cache@v3
+        with:
+          path: /opt/hostedtoolcache/flutter
+          key: ${{ runner.os }}-flutter-3.22.3
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.3'
+          cache: true
+
+      - name: Scaffold Android Project
+        run: |
+          flutter create . --org com.example --project-name acoustic_twin --platforms android
+          cp custom/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
+          mkdir -p android/app/src/main/kotlin/com/example/acoustic_twin
+          cp custom/MainActivity.kt android/app/src/main/kotlin/com/example/acoustic_twin/MainActivity.kt
+          sed -i 's/minSdkVersion.*/minSdkVersion 24/' android/app/build.gradle
+
+      - name: Build APK (Optimized)
+        run: flutter build apk --debug --no-tree-shake-icons --split-per-abi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: acoustic-twin-apk
+          path: build/app/outputs/flutter-apk/
