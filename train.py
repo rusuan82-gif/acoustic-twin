@@ -36,7 +36,7 @@ def main():
     n_val = max(64, len(X) // 10)
     Xval, Xtr = X[idx[:n_val]], X[idx[n_val:]]
 
-    print(f" Antrenare: {len(Xtr)} clipuri | Validare: {len(Xval)} clipuri")
+    print(f"📊 Antrenare: {len(Xtr)} clipuri | Validare: {len(Xval)} clipuri")
     model = build_autoencoder()
     model.compile(optimizer=keras.optimizers.Adam(1e-3), loss="mse")
     model.fit(Xtr, Xtr, epochs=args.epochs, batch_size=64, verbose=1)
