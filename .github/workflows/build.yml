@@ -11,6 +11,7 @@ permissions:
   id-token: write
 
 jobs:
+  # JOB 1: Antrenare + Web (Optimizat pentru Python 3.12)
   train-and-web:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -52,6 +53,7 @@ jobs:
           name: web-files
           path: web-artifacts/
 
+  # JOB 2: Deploy Pages
   deploy-pages:
     needs: train-and-web
     runs-on: ubuntu-latest
@@ -69,6 +71,7 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
+  # JOB 3: APK (Doar dacă există pubspec.yaml)
   build-apk:
     needs: train-and-web
     runs-on: ubuntu-latest
@@ -95,8 +98,9 @@ jobs:
       - name: Prepare Baseline JSON
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: |
-          # ✅ FIX: Instalăm numpy DOAR pentru acest pas ca să generăm json-ul
-          pip install numpy==1.26.4
+          # ✅ FIX CRITIC: Instalăm numpy DOAR pentru acest pas
+          pip install numpy==1.26.4 --quiet
+          
           mkdir -p assets/models
           python -c "
           import numpy as np, json, os
@@ -107,6 +111,7 @@ jobs:
           else:
               data = {'mu': 0.0, 'sigma': 1.0}
           json.dump(data, open('assets/models/baseline.json', 'w'))
+          print('✅ Baseline JSON generat:', data)
           "
 
       - name: Setup Flutter
