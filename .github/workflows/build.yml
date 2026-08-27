@@ -81,27 +81,79 @@ jobs:
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         uses: subosito/flutter-action@v2
         with:
-          # ✅ FIX: Folosim o versiune mai nouă de Flutter care suportă API 35
-          flutter-version: '3.24.0' 
+          flutter-version: '3.24.3' 
           cache: true
 
       - name: Scaffold Android Project
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: |
-          # Setăm package name-ul corect
           flutter create . --org com.rusuan82 --project-name acoustictwin --platforms android
           
           mkdir -p android/app/src/main/kotlin/com/rusuan82/acoustictwin
           if [ -f "custom/MainActivity.kt" ]; then cp custom/MainActivity.kt android/app/src/main/kotlin/com/rusuan82/acoustictwin/MainActivity.kt; fi
           if [ -f "custom/AndroidManifest.xml" ]; then cp custom/AndroidManifest.xml android/app/src/main/AndroidManifest.xml; fi
 
+      # ✅ FIX CRITIC: Actualizare AGP pentru suport API 35
+      - name: Update Android Gradle Plugin for API 35
+        if: steps.check_flutter.outputs.flutter_exists == 'true'
+        run: |
+          # Actualizăm build.gradle la nivel de proiect pentru a folosi AGP 8.5.0+
+          cat <<EOF > android/build.gradle
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+
+          rootProject.buildDir = '../build'
+          subprojects {
+              project.buildDir = "\${rootProject.buildDir}/\${project.name}"
+          }
+          subprojects {
+              project.evaluationDependsOn(':app')
+          }
+
+          tasks.register("clean", Delete) {
+              delete rootProject.buildDir
+          }
+          EOF
+
+          # Actualizăm settings.gradle pentru a include plugin-ul AGP nou
+          cat <<EOF > android/settings.gradle
+          pluginManagement {
+              def flutterSdkPath = {
+                  def properties = new Properties()
+                  file("local.properties").withInputStream { properties.load(it) }
+                  def flutterSdkPath = properties.getProperty("flutter.sdk")
+                  assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
+                  return flutterSdkPath
+              }
+              settings.ext.flutterSdkPath = flutterSdkPath()
+
+              includeBuild("\${settings.ext.flutterSdkPath}/packages/flutter_tools/gradle")
+
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+
+          plugins {
+              id "dev.flutter.flutter-plugin-loader" version "1.0.0"
+              id "com.android.application" version "8.5.0" apply false
+              id "org.jetbrains.kotlin.android" version "1.9.0" apply false
+          }
+
+          include ":app"
+          EOF
+
       - name: Setup Keystore and Generate Build Gradle
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: |
-          # Generăm keystore
           keytool -genkey -v -keystore android/app/release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload -storepass android -keypass android -dname "CN=AcousticTwin, OU=Dev, O=Dev, L=City, S=State, C=US"
           
-          # Generăm build.gradle cu API 35
           cat <<EOF > android/app/build.gradle
           plugins {
               id "com.android.application"
