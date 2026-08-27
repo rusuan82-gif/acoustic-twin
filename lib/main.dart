@@ -27,6 +27,7 @@ class SonicSonar {
       }
 
       final byteData = ByteData(44 + buffer.length * 2);
+      // WAV Header
       byteData.setUint8(0, 0x52); byteData.setUint8(1, 0x49); byteData.setUint8(2, 0x46); byteData.setUint8(3, 0x46);
       byteData.setUint32(4, 36 + buffer.length * 2, Endian.little);
       byteData.setUint8(8, 0x57); byteData.setUint8(9, 0x41); byteData.setUint8(10, 0x56); byteData.setUint8(11, 0x45);
@@ -99,7 +100,6 @@ class _NexusScreenState extends State<NexusScreen> with TickerProviderStateMixin
   final SonicSonar sonar = SonicSonar();
   Timer? scanTimer;
   
-  // Date pentru Spectrogram
   List<List<double>> spectrogramData = [];
   final int spectrogramWidth = 60;
   final int spectrogramHeight = 32;
@@ -108,7 +108,6 @@ class _NexusScreenState extends State<NexusScreen> with TickerProviderStateMixin
   void initState() {
     super.initState();
     radarAnim = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat();
-    // Inițializăm spectrogramul cu zerouri
     for (int i = 0; i < spectrogramWidth; i++) {
       spectrogramData.add(List.filled(spectrogramHeight, 0.0));
     }
@@ -123,7 +122,6 @@ class _NexusScreenState extends State<NexusScreen> with TickerProviderStateMixin
       countdown = 6;
       score = '...';
       themeColor = type == 'SONAR' ? const Color(0xFFBC13FE) : const Color(0xFF00F3FF);
-      // Resetăm spectrogramul
       for (int i = 0; i < spectrogramWidth; i++) {
         spectrogramData[i] = List.filled(spectrogramHeight, 0.0);
       }
@@ -144,22 +142,19 @@ class _NexusScreenState extends State<NexusScreen> with TickerProviderStateMixin
       }
     });
     
-    // Simulăm date spectrogram în timp real
     Timer.periodic(const Duration(milliseconds: 100), (t) {
       if (!isScanning) {
         t.cancel();
         return;
       }
       setState(() {
-        // Shiftăm datele spre stânga
         for (int i = 0; i < spectrogramWidth - 1; i++) {
           spectrogramData[i] = List.from(spectrogramData[i + 1]);
         }
-        // Generăm o nouă coloană de date (simulare FFT)
         List<double> newColumn = [];
         for (int j = 0; j < spectrogramHeight; j++) {
           double noise = math.Random().nextDouble() * 0.3;
-          double signal = (type == 'SONAR' && j > 20) ? 0.8 : 0.1; // Semnal puternic la frecvențe înalte pentru sonar
+          double signal = (type == 'SONAR' && j > 20) ? 0.8 : 0.1;
           newColumn.add((noise + signal).clamp(0.0, 1.0));
         }
         spectrogramData[spectrogramWidth - 1] = newColumn;
@@ -214,8 +209,6 @@ class _NexusScreenState extends State<NexusScreen> with TickerProviderStateMixin
                 ],
               ),
               const SizedBox(height: 20),
-              
-              // SPECTROGRAM AUDIO VIZUAL
               Container(
                 height: 120,
                 width: double.infinity,
@@ -228,9 +221,7 @@ class _NexusScreenState extends State<NexusScreen> with TickerProviderStateMixin
                   painter: SpectrogramPainter(spectrogramData, themeColor),
                 ),
               ),
-              
               const SizedBox(height: 20),
-              
               Stack(
                 alignment: Alignment.center,
                 children: [
@@ -277,24 +268,20 @@ class _NexusScreenState extends State<NexusScreen> with TickerProviderStateMixin
   }
 }
 
-// --- SPECTROGRAM PAINTER ---
 class SpectrogramPainter extends CustomPainter {
   final List<List<double>> data;
   final Color baseColor;
-
   SpectrogramPainter(this.data, this.baseColor);
 
   @override
   void paint(Canvas canvas, Size size) {
     if (data.isEmpty) return;
-    
     final cellWidth = size.width / data.length;
     final cellHeight = size.height / data[0].length;
 
     for (int x = 0; x < data.length; x++) {
       for (int y = 0; y < data[x].length; y++) {
         double intensity = data[x][y];
-        // Mapăm intensitatea la culoare (Albastru -> Cyan -> Galben -> Roșu)
         Color cellColor;
         if (intensity < 0.33) {
           cellColor = Color.lerp(Colors.blue, Colors.cyan, intensity * 3)!;
@@ -316,7 +303,6 @@ class SpectrogramPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
 
-// --- RAPORT AVANSAT (FIX OVERFLOW) ---
 class AdvancedReport extends StatelessWidget {
   final int health;
   final String mode;
