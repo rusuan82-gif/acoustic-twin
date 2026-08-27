@@ -3,692 +3,330 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ACOUSTIC TWIN // NEXUS PROTOCOL v2.0</title>
+    <title>Acoustic Twin // LCARS Diagnostic Interface</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
 
         :root {
-            --neon-cyan: #00f3ff;
-            --neon-pink: #ff0055;
-            --neon-yellow: #ffee00;
-            --neon-green: #00ff9d;
-            --neon-purple: #bc13fe;
-            --bg-dark: #020205;
-            --panel-bg: rgba(5, 10, 20, 0.85);
-            --grid-line: rgba(0, 243, 255, 0.05);
-            --glow-cyan: 0 0 10px var(--neon-cyan), 0 0 20px var(--neon-cyan);
-            --glow-pink: 0 0 10px var(--neon-pink), 0 0 20px var(--neon-pink);
-            --glow-purple: 0 0 10px var(--neon-purple), 0 0 20px var(--neon-purple);
+            --lcars-blue: #99ccff;
+            --lcars-orange: #ff9900;
+            --lcars-red: #cc0000;
+            --lcars-bg: #050505;
+            --lcars-panel: #111;
+            --scanline: rgba(153, 204, 255, 0.05);
         }
 
-        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
-            background-color: var(--bg-dark);
-            color: var(--neon-cyan);
+            background-color: var(--lcars-bg);
+            color: var(--lcars-blue);
             font-family: 'Share Tech Mono', monospace;
             height: 100vh;
-            overflow: hidden;
             display: flex;
             justify-content: center;
             align-items: center;
-            perspective: 1200px;
+            overflow: hidden;
+            position: relative;
         }
 
-        .cyber-grid {
+        /* Efect Scanline CRT */
+        body::before {
+            content: " ";
+            display: block;
             position: absolute;
-            top: -50%; left: -50%; width: 200%; height: 200%;
-            background-image: 
-                linear-gradient(var(--grid-line) 1px, transparent 1px),
-                linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
-            background-size: 50px 50px;
-            transform: perspective(600px) rotateX(60deg) translateY(-100px) translateZ(-200px);
-            animation: gridMove 20s linear infinite;
-            z-index: -2;
-            opacity: 0.4;
-        }
-
-        @keyframes gridMove {
-            0% { transform: perspective(600px) rotateX(60deg) translateY(0) translateZ(-200px); }
-            100% { transform: perspective(600px) rotateX(60deg) translateY(50px) translateZ(-200px); }
-        }
-
-        .scanlines {
-            position: fixed;
-            top: 0; left: 0; width: 100vw; height: 100vh;
-            background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.2));
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(to bottom, var(--scanline) 50%, transparent 50%);
             background-size: 100% 4px;
-            z-index: 100;
+            z-index: 10;
             pointer-events: none;
-            animation: flicker 0.15s infinite;
-        }
-
-        @keyframes flicker {
-            0% { opacity: 0.9; }
-            50% { opacity: 1.0; }
-            100% { opacity: 0.9; }
         }
 
         .container {
-            width: 95%;
+            width: 90%;
             max-width: 600px;
-            background: var(--panel-bg);
-            border: 1px solid var(--neon-cyan);
-            border-radius: 4px;
-            padding: 25px;
+            background: var(--lcars-panel);
+            border: 2px solid var(--lcars-blue);
+            border-radius: 15px 40px 15px 40px;
+            padding: 30px;
             position: relative;
-            box-shadow: var(--glow-cyan), inset 0 0 30px rgba(0, 243, 255, 0.1);
-            backdrop-filter: blur(8px);
-            transform-style: preserve-3d;
-            transform: rotateX(2deg);
+            z-index: 5;
+            box-shadow: 0 0 20px rgba(153, 204, 255, 0.2);
         }
-
-        .corner { position: absolute; width: 30px; height: 30px; border: 2px solid var(--neon-cyan); transition: all 0.3s; }
-        .tl { top: -2px; left: -2px; border-right: none; border-bottom: none; }
-        .tr { top: -2px; right: -2px; border-left: none; border-bottom: none; }
-        .bl { bottom: -2px; left: -2px; border-right: none; border-top: none; }
-        .br { bottom: -2px; right: -2px; border-left: none; border-top: none; }
-        
-        .container:hover .corner { width: 40px; height: 40px; box-shadow: var(--glow-cyan); }
 
         .header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid var(--neon-cyan);
-            padding-bottom: 15px;
-            margin-bottom: 25px;
+            border-bottom: 2px solid var(--lcars-blue);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
             text-transform: uppercase;
+            letter-spacing: 2px;
         }
 
-        h1 {
-            font-family: 'Orbitron', sans-serif;
-            font-size: 1.4rem;
-            text-shadow: var(--glow-cyan);
-            letter-spacing: 3px;
-        }
+        .status-bar { font-size: 0.8rem; color: var(--lcars-orange); }
 
-        .status-indicator {
-            width: 12px; height: 12px;
-            background: var(--neon-green);
+        .radar-container {
+            width: 200px;
+            height: 200px;
+            margin: 20px auto;
+            border: 2px solid var(--lcars-blue);
             border-radius: 50%;
-            box-shadow: 0 0 10px var(--neon-green);
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.2); } 100% { opacity: 1; transform: scale(1); } }
-
-        #visualizer {
-            width: 100%;
-            height: 180px;
-            background: rgba(0, 0, 0, 0.6);
-            border: 1px solid rgba(0, 243, 255, 0.3);
-            margin-bottom: 25px;
-            cursor: crosshair;
-            box-shadow: inset 0 0 20px rgba(0, 243, 255, 0.1);
-        }
-
-        .main-display {
-            text-align: center;
-            margin-bottom: 25px;
-            position: relative;
-        }
-
-        .score-ring {
-            width: 140px; height: 140px;
-            margin: 0 auto 15px;
-            border-radius: 50%;
-            border: 4px solid rgba(0, 243, 255, 0.2);
             position: relative;
             display: flex;
             justify-content: center;
             align-items: center;
-            box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
+            overflow: hidden;
         }
 
-        .score-ring::before {
-            content: '';
+        .radar-sweep {
             position: absolute;
-            top: -10px; left: -10px; right: -10px; bottom: -10px;
+            width: 100%;
+            height: 100%;
+            background: conic-gradient(from 0deg, transparent 70%, rgba(153, 204, 255, 0.5) 100%);
             border-radius: 50%;
-            border: 2px dashed var(--neon-cyan);
-            animation: spin 10s linear infinite;
-            opacity: 0.5;
+            animation: sweep 2s linear infinite;
+            display: none;
         }
 
-        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes sweep { 100% { transform: rotate(360deg); } }
 
-        .score-value {
-            font-family: 'Orbitron', sans-serif;
-            font-size: 3rem;
-            font-weight: 900;
-            text-shadow: var(--glow-cyan);
-            z-index: 2;
-        }
+        .score-display { font-size: 3rem; font-weight: bold; z-index: 2; }
 
-        .prediction-text {
-            font-size: 1rem;
-            color: var(--neon-yellow);
-            min-height: 1.5em;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            text-shadow: 0 0 5px var(--neon-yellow);
-        }
-
-        .btn-group {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-
-        .btn-scan {
-            flex: 1;
+        .btn-main {
+            display: block;
+            width: 100%;
             padding: 15px;
             background: transparent;
-            border: 2px solid var(--neon-cyan);
-            color: var(--neon-cyan);
-            font-family: 'Orbitron', sans-serif;
-            font-size: 1rem;
-            font-weight: 700;
+            border: 2px solid var(--lcars-orange);
+            color: var(--lcars-orange);
+            font-family: inherit;
+            font-size: 1.2rem;
+            text-transform: uppercase;
             cursor: pointer;
             transition: all 0.3s;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            position: relative;
-            overflow: hidden;
-            box-shadow: 0 0 10px rgba(0, 243, 255, 0.2);
+            margin-top: 20px;
+            border-radius: 5px 20px 5px 20px;
         }
 
-        .btn-resonance {
-            border-color: var(--neon-purple);
-            color: var(--neon-purple);
-            box-shadow: 0 0 10px rgba(188, 19, 254, 0.2);
+        .btn-main:hover:not(:disabled) {
+            background: var(--lcars-orange);
+            color: var(--lcars-bg);
+            box-shadow: 0 0 15px var(--lcars-orange);
         }
 
-        .btn-scan:hover:not(:disabled) {
-            background: var(--neon-cyan);
-            color: var(--bg-dark);
-            box-shadow: var(--glow-cyan);
-            text-shadow: none;
-        }
-
-        .btn-resonance:hover:not(:disabled) {
-            background: var(--neon-purple);
-            color: var(--bg-dark);
-            box-shadow: var(--glow-purple);
-            text-shadow: none;
-        }
-
-        .btn-scan:disabled, .btn-resonance:disabled {
-            border-color: #333;
-            color: #333;
-            cursor: not-allowed;
-            box-shadow: none;
-        }
+        .btn-main:disabled { border-color: #555; color: #555; cursor: not-allowed; }
 
         .report-panel {
-            margin-top: 25px;
-            border-top: 1px dashed var(--neon-cyan);
-            padding-top: 20px;
-            display: none;
-            animation: slideUp 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        }
-
-        @keyframes slideUp { from { opacity: 0; transform: translateY(30px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
-
-        .report-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 15px;
-            font-size: 0.9rem;
-            color: var(--neon-pink);
-            text-shadow: 0 0 5px var(--neon-pink);
-            border-bottom: 1px solid rgba(255, 0, 85, 0.3);
-            padding-bottom: 5px;
-        }
-
-        .fault-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px;
-            margin-bottom: 8px;
-            background: rgba(255, 0, 85, 0.05);
-            border-left: 4px solid var(--neon-pink);
-            transition: all 0.2s;
-        }
-
-        .fault-item:hover {
-            background: rgba(255, 0, 85, 0.15);
-            transform: translateX(5px);
-        }
-
-        .fault-code { font-weight: bold; color: var(--neon-pink); font-family: 'Orbitron', sans-serif; }
-        .fault-prob { color: var(--neon-yellow); font-size: 0.9rem; }
-
-        .action-plan {
             margin-top: 20px;
-            padding: 15px;
-            background: rgba(0, 243, 255, 0.05);
-            border: 1px solid var(--neon-cyan);
-            font-size: 0.9rem;
-            line-height: 1.4;
-            box-shadow: inset 0 0 10px rgba(0, 243, 255, 0.1);
+            border-top: 1px dashed var(--lcars-blue);
+            padding-top: 15px;
+            display: none;
         }
 
-        .resonance-active {
-            border-color: var(--neon-purple) !important;
-            box-shadow: var(--glow-purple), inset 0 0 30px rgba(188, 19, 254, 0.1) !important;
-        }
-        
-        .resonance-active .score-ring {
-            border-color: var(--neon-purple);
-            box-shadow: 0 0 15px rgba(188, 19, 254, 0.2);
-        }
-        
-        .resonance-active .score-ring::before {
-            border-color: var(--neon-purple);
-            animation-duration: 2s;
-        }
+        .report-item { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9rem; }
+        .alert-high { color: var(--lcars-red); text-shadow: 0 0 5px var(--lcars-red); }
+        .alert-med { color: var(--lcars-orange); }
+        .alert-low { color: var(--lcars-blue); }
 
+        .visualizer { width: 100%; height: 60px; background: #000; margin-top: 15px; border: 1px solid #333; }
     </style>
 </head>
 <body>
 
-<div class="cyber-grid"></div>
-<div class="scanlines"></div>
-
-<div class="container" id="main-container">
-    <div class="corner tl"></div><div class="corner tr"></div>
-    <div class="corner bl"></div><div class="corner br"></div>
-
+<div class="container">
     <div class="header">
-        <h1 class="glitch-text" data-text="NEXUS PROTOCOL">NEXUS PROTOCOL</h1>
-        <div class="status-indicator" id="sys-led"></div>
+        <span>ACOUSTIC TWIN v1.0</span>
+        <span class="status-bar" id="sys-status">SYSTEM READY</span>
     </div>
 
-    <canvas id="visualizer"></canvas>
-
-    <div class="main-display">
-        <div class="score-ring">
-            <div class="score-value" id="score">--</div>
-        </div>
-        <div class="prediction-text" id="prediction">SYSTEM STANDBY</div>
+    <div style="text-align: center;">
+        <p>DIAGNOSTIC PREDICTIV HARDWARE</p>
     </div>
 
-    <div class="btn-group">
-        <button class="btn-scan" id="scanBtn">PASSIVE SCAN</button>
-        <button class="btn-scan btn-resonance" id="resonanceBtn">RESONANCE SCAN</button>
+    <div class="radar-container">
+        <div class="radar-sweep" id="radar"></div>
+        <div class="score-display" id="score">--</div>
     </div>
+
+    <canvas id="visualizer" class="visualizer"></canvas>
+
+    <button id="scanBtn" class="btn-main">PORNEȘTE SCANAREA (6s)</button>
 
     <div class="report-panel" id="report">
-        <div class="report-header">
-            <span>DIAGNOSTIC REPORT</span>
-            <span id="report-id">#QX-0000</span>
-        </div>
-        <div id="fault-list"></div>
-        <div class="action-plan" id="action-plan"></div>
+        <h3 style="color: var(--lcars-orange); margin-bottom: 10px;">// RAPORT ANALIZĂ ACUSTICĂ</h3>
+        <div id="report-content"></div>
     </div>
 </div>
 
 <script>
-    // --- AUDIO ENGINE ---
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    
-    function playTone(freq, type, duration, vol = 0.1) {
-        if (audioCtx.state === 'suspended') audioCtx.resume();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = type;
-        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + duration);
-    }
-
-    function playScanSound() {
-        playTone(600, 'sine', 0.1);
-        setTimeout(() => playTone(900, 'square', 0.1), 100);
-    }
-
-    function playResonancePing() {
-        // Ultrasonic ping (imperceptibil pentru majoritatea oamenilor)
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(18000, audioCtx.currentTime); // 18kHz
-        osc.frequency.exponentialRampToValueAtTime(20000, audioCtx.currentTime + 0.1); // Sweep la 20kHz
-        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.5);
-    }
-
-    function playAlertSound() {
-        playTone(150, 'sawtooth', 0.3, 0.2);
-        setTimeout(() => playTone(100, 'sawtooth', 0.3, 0.2), 150);
-    }
-
-    function playSuccessSound() {
-        playTone(500, 'sine', 0.1);
-        setTimeout(() => playTone(800, 'sine', 0.2), 100);
-    }
-
-    // --- HAPTIC ENGINE ---
-    function vibrate(pattern) {
-        if (navigator.vibrate) navigator.vibrate(pattern);
-    }
-
-    // --- VISUALIZER 3D ENGINE ---
+    const sysStatus = document.getElementById('sys-status');
+    const scanBtn = document.getElementById('scanBtn');
+    const scoreDisplay = document.getElementById('score');
+    const radar = document.getElementById('radar');
+    const reportPanel = document.getElementById('report');
+    const reportContent = document.getElementById('report-content');
     const canvas = document.getElementById('visualizer');
     const ctx = canvas.getContext('2d');
-    let width, height;
-    let particles = [];
 
-    function resize() {
-        width = canvas.width = canvas.offsetWidth;
-        height = canvas.height = canvas.offsetHeight;
+    function resizeCanvas() {
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+        drawIdleVisualizer();
     }
-    window.addEventListener('resize', resize);
-    resize();
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
 
-    class Particle {
-        constructor() {
-            this.x = Math.random() * width;
-            this.y = Math.random() * height;
-            this.vx = (Math.random() - 0.5) * 1.5;
-            this.vy = (Math.random() - 0.5) * 1.5;
-            this.radius = Math.random() * 2 + 1;
-            this.baseColor = `rgba(0, 243, 255, ${Math.random() * 0.5 + 0.2})`;
-        }
-        update(energy, isResonance) {
-            this.x += this.vx * (1 + energy * 3);
-            this.y += this.vy * (1 + energy * 3);
-            
-            if (this.x < 0 || this.x > width) this.vx *= -1;
-            if (this.y < 0 || this.y > height) this.vy *= -1;
-            
-            ctx.beginPath();
-            ctx.arc(this.x, this.y, this.radius * (1 + energy * 2), 0, Math.PI * 2);
-            ctx.fillStyle = isResonance 
-                ? `rgba(188, 19, 254, ${0.5 + energy})` 
-                : (energy > 0.5 ? `rgba(255, 0, 85, ${0.5 + energy})` : this.baseColor);
-            ctx.fill();
-        }
-    }
-
-    for (let i = 0; i < 60; i++) particles.push(new Particle());
-
-    function drawVisualizer(energy = 0, isResonance = false) {
-        ctx.fillStyle = 'rgba(2, 2, 5, 0.2)';
-        ctx.fillRect(0, 0, width, height);
-        
-        particles.forEach(p => p.update(energy, isResonance));
-        
-        ctx.lineWidth = 1;
-        for (let i = 0; i < particles.length; i++) {
-            for (let j = i + 1; j < particles.length; j++) {
-                const dx = particles[i].x - particles[j].x;
-                const dy = particles[i].y - particles[j].y;
-                const dist = Math.sqrt(dx*dx + dy*dy);
-                
-                if (dist < 120) {
-                    ctx.beginPath();
-                    ctx.strokeStyle = isResonance
-                        ? `rgba(188, 19, 254, ${0.1 + energy * 0.4})`
-                        : (energy > 0.5 
-                            ? `rgba(255, 0, 85, ${0.1 + energy * 0.4})` 
-                            : `rgba(0, 243, 255, ${0.05 + energy * 0.2})`);
-                    ctx.moveTo(particles[i].x, particles[i].y);
-                    ctx.lineTo(particles[j].x, particles[j].y);
-                    ctx.stroke();
-                }
-            }
-        }
-    }
-
-    // --- MAIN LOGIC ---
-    const scanBtn = document.getElementById('scanBtn');
-    const resonanceBtn = document.getElementById('resonanceBtn');
-    const scoreEl = document.getElementById('score');
-    const predEl = document.getElementById('prediction');
-    const reportPanel = document.getElementById('report');
-    const faultList = document.getElementById('fault-list');
-    const actionPlan = document.getElementById('action-plan');
-    const sysLed = document.getElementById('sys-led');
-    const mainContainer = document.getElementById('main-container');
-
-    let isScanning = false;
-
-    // PASSIVE SCAN (Original)
-    scanBtn.addEventListener('click', () => startScan(false));
-    
-    // RESONANCE SCAN (New Feature)
-    resonanceBtn.addEventListener('click', () => startScan(true));
-
-    async function startScan(isResonance) {
-        if (isScanning) return;
-        isScanning = true;
-        
+    scanBtn.addEventListener('click', async () => {
         scanBtn.disabled = true;
-        resonanceBtn.disabled = true;
-        reportPanel.style.display = 'none';
-        scoreEl.innerText = "...";
-        scoreEl.style.color = isResonance ? "var(--neon-purple)" : "var(--neon-cyan)";
-        predEl.innerText = isResonance ? "EMITTING SONIC PULSE..." : "ANALYZING WAVEFORMS";
-        predEl.style.color = isResonance ? "var(--neon-purple)" : "var(--neon-yellow)";
-        sysLed.style.background = isResonance ? "var(--neon-purple)" : "var(--neon-yellow)";
-        sysLed.style.boxShadow = `0 0 10px ${sysLed.style.background}`;
-        
-        if (isResonance) {
-            mainContainer.classList.add('resonance-active');
-            playResonancePing();
-            vibrate([100, 50, 100]); // Vibrație distinctă pentru rezonanță
-        } else {
-            playScanSound();
-            vibrate([50, 50, 50]);
-        }
+        radar.style.display = "block";
+        reportPanel.style.display = "none";
+        scoreDisplay.innerText = "6";
+        scoreDisplay.style.color = "var(--lcars-blue)";
+        sysStatus.innerText = "CAPTURING AUDIO STREAM...";
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             const source = audioCtx.createMediaStreamSource(stream);
             const analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 256;
+            analyser.fftSize = 2048;
             source.connect(analyser);
             
             const bufferLength = analyser.frequencyBinCount;
             const dataArray = new Uint8Array(bufferLength);
             
             let totalEnergy = 0;
-            let highFreqEnergy = 0;
-            let lowFreqEnergy = 0;
-            let resonancePeak = 0;
-            let samples = 0;
-            
-            const startTime = Date.now();
-            const duration = 6000;
+            let sampleCount = 0;
+            let animationId;
+            let countdown = 6;
 
-            function analyze() {
-                if (Date.now() - startTime > duration) {
-                    finishScan(totalEnergy/samples, highFreqEnergy/samples, lowFreqEnergy/samples, resonancePeak, isResonance);
-                    stream.getTracks().forEach(t => t.stop());
-                    return;
+            // ✅ Countdown vizual precis (6...5...4...)
+            const countdownInterval = setInterval(() => {
+                countdown--;
+                if (countdown > 0) {
+                    scoreDisplay.innerText = countdown;
                 }
+            }, 1000);
 
+            function analyzeFrame() {
                 analyser.getByteFrequencyData(dataArray);
                 
                 let frameEnergy = 0;
-                let frameHigh = 0;
-                let frameLow = 0;
-                let frameResonance = 0;
-                
-                for (let i = 0; i < bufferLength; i++) {
-                    const val = dataArray[i];
-                    frameEnergy += val;
-                    if (i > bufferLength * 0.6) frameHigh += val;
-                    if (i < bufferLength * 0.3) frameLow += val;
-                    // Detectăm frecvențele înalte specifice rezonanței (15kHz+)
-                    if (i > bufferLength * 0.8) frameResonance = Math.max(frameResonance, val);
+                for(let i = 0; i < bufferLength; i++) {
+                    frameEnergy += dataArray[i];
                 }
-                
                 totalEnergy += frameEnergy;
-                highFreqEnergy += frameHigh;
-                lowFreqEnergy += frameLow;
-                resonancePeak = Math.max(resonancePeak, frameResonance);
-                samples++;
+                sampleCount++;
 
-                const normalizedEnergy = frameEnergy / (bufferLength * 255);
-                drawVisualizer(normalizedEnergy, isResonance);
-                
-                const remaining = Math.ceil((duration - (Date.now() - startTime)) / 1000);
-                scoreEl.innerText = remaining;
-                
-                requestAnimationFrame(analyze);
+                drawActiveVisualizer(dataArray);
+                animationId = requestAnimationFrame(analyzeFrame);
             }
-            
-            analyze();
+
+            analyzeFrame();
+
+            // ✅ Oprire EXACTĂ după 6000ms (6 secunde reale)
+            setTimeout(() => {
+                clearInterval(countdownInterval);
+                cancelAnimationFrame(animationId);
+                stream.getTracks().forEach(track => track.stop());
+                audioCtx.close();
+                processResult(totalEnergy / sampleCount);
+            }, 6000);
 
         } catch (err) {
             console.error(err);
-            predEl.innerText = "ERROR: MIC ACCESS DENIED";
-            predEl.style.color = "var(--neon-pink)";
+            sysStatus.innerText = "ERR: MIC ACCESS DENIED";
+            sysStatus.style.color = "var(--lcars-red)";
             scanBtn.disabled = false;
-            resonanceBtn.disabled = false;
-            isScanning = false;
-            sysLed.style.background = "var(--neon-pink)";
-            mainContainer.classList.remove('resonance-active');
+            scanBtn.innerText = "REÎNCERCARE";
+            radar.style.display = "none";
+            scoreDisplay.innerText = "--";
         }
-    }
+    });
 
-    function finishScan(avgEnergy, avgHigh, avgLow, resPeak, isResonance) {
-        isScanning = false;
-        scanBtn.disabled = false;
-        resonanceBtn.disabled = false;
-        mainContainer.classList.remove('resonance-active');
+    function processResult(avgEnergy) {
+        sysStatus.innerText = "PROCESSING SPECTROGRAM...";
+        radar.style.display = "none";
         
-        // AI Logic
+        // Algoritm de diagnosticare bazat pe energie spectrală
         let health = 100;
-        let entropy = (avgHigh * 0.7 + avgLow * 0.3) / 1000;
+        let anomalyScore = avgEnergy / 1000;
         
-        if (isResonance) {
-            // Algoritm special pentru rezonanță
-            // Dacă vârful de rezonanță este mic, carcasa este slăbită/deschisă
-            // Dacă este prea mare, carcasa rezonează anormal (șuruburi desfăcute)
-            if (resPeak < 50) {
-                health -= 30; // Carcasă deschisă/slabă
-                entropy += 0.5;
-            } else if (resPeak > 200) {
-                health -= 20; // Rezonanță anormală
-                entropy += 0.3;
-            }
-            health = Math.max(0, health - (entropy * 80));
-        } else {
-            health = Math.max(0, 100 - (entropy * 120));
-        }
+        if (anomalyScore > 50) health = 40; // Zgomot puternic -> Critic
+        else if (anomalyScore > 20) health = 70; // Zgomot mediu -> Atenție
+        else health = 95; // Liniște -> Optim
+        
+        // Variație aleatorie pentru realism
+        health = Math.max(0, Math.min(100, health + (Math.random() * 10 - 5)));
+        health = Math.round(health);
 
-        const isCritical = health < 55;
-        const isWarning = health >= 55 && health < 80;
-        
-        scoreEl.innerText = Math.round(health) + "%";
-        sysLed.style.background = isCritical ? "var(--neon-pink)" : (isWarning ? "var(--neon-yellow)" : "var(--neon-green)");
-        sysLed.style.boxShadow = `0 0 15px ${sysLed.style.background}`;
-        
-        generateReport(health, avgHigh, avgLow, isCritical, isWarning, isResonance, resPeak);
-        
-        if (isCritical) {
-            playAlertSound();
-            vibrate([200, 100, 200, 100, 500]);
-            scoreEl.style.color = "var(--neon-pink)";
-            scoreEl.style.textShadow = "var(--glow-pink)";
-            predEl.innerText = "CRITICAL FAILURE IMMINENT";
-            predEl.style.color = "var(--neon-pink)";
-        } else if (isWarning) {
-            playTone(400, 'triangle', 0.2);
-            vibrate([100, 100, 100]);
-            scoreEl.style.color = "var(--neon-yellow)";
-            scoreEl.style.textShadow = "0 0 10px var(--neon-yellow)";
-            predEl.innerText = "ANOMALY DETECTED";
-            predEl.style.color = "var(--neon-yellow)";
-        } else {
-            playSuccessSound();
-            vibrate(50);
-            scoreEl.style.color = "var(--neon-green)";
-            scoreEl.style.textShadow = "0 0 10px var(--neon-green)";
-            predEl.innerText = isResonance ? "STRUCTURAL INTEGRITY OK" : "SYSTEM OPTIMAL";
-            predEl.style.color = "var(--neon-green)";
-        }
+        scoreDisplay.innerText = health + "%";
+        generateReport(health, anomalyScore);
+
+        sysStatus.innerText = "ANALYSIS COMPLETE";
+        scanBtn.disabled = false;
+        scanBtn.innerText = "SCANEAZĂ DIN NOU";
+        drawIdleVisualizer();
     }
 
-    function generateReport(health, highFreq, lowFreq, isCritical, isWarning, isResonance, resPeak) {
-        reportPanel.style.display = 'block';
-        faultList.innerHTML = '';
+    // Logica Raportului de Diagnostic (Star Trek Style)
+    function generateReport(health, anomalyScore) {
+        reportPanel.style.display = "block";
+        let html = "";
         
-        const faults = [];
-        
-        if (isResonance) {
-            // Raport specific pentru Rezonanță
-            if (resPeak < 50) {
-                faults.push({ code: "0xR1-S", name: "CHASSIS_LOOSE", prob: "94%", time: "Immediate" });
-            } else if (resPeak > 200) {
-                faults.push({ code: "0xR2-H", name: "MOUNTING_STRESS", prob: "78%", time: "~72h" });
-            } else {
-                faults.push({ code: "0xR0-OK", name: "STRUCTURAL_OK", prob: "100%", time: "N/A" });
-            }
+        if (health > 85) {
+            scoreDisplay.style.color = "var(--lcars-blue)";
+            html += `<div class="report-item alert-low"><span>STARE GENERALĂ:</span><span>OPTIMĂ</span></div>`;
+            html += `<div class="report-item alert-low"><span>ANOMALII DETECTATE:</span><span>NESIGNIFICANT</span></div>`;
+            html += `<div class="report-item alert-low"><span>ACȚIUNE:</span><span>MONITORIZARE STANDARD</span></div>`;
+        } else if (health > 60) {
+            scoreDisplay.style.color = "var(--lcars-orange)";
+            html += `<div class="report-item alert-med"><span>STARE GENERALĂ:</span><span>ATENȚIE</span></div>`;
+            html += `<div class="report-item alert-med"><span>SUSPECT 1:</span><span>RULMENT VENTILATOR (UZURĂ)</span></div>`;
+            html += `<div class="report-item alert-med"><span>SEMNĂTURĂ:</span><span>FRECVENȚE TONALE 2-4kHz</span></div>`;
+            html += `<div class="report-item alert-med"><span>ACȚIUNE:</span><span>INSPECȚIE ÎN 7 ZILE</span></div>`;
         } else {
-            // Raport standard
-            if (highFreq > 2500) {
-                faults.push({ code: "0x7F4A", name: "BEARING_FRICTION", prob: "87%", time: "~48h" });
-            }
-            if (lowFreq > 4000 && Math.random() > 0.4) {
-                faults.push({ code: "0x2B9C", name: "HDD_MECHANICAL", prob: "64%", time: "~120h" });
-            }
-            if (health < 45) {
-                faults.push({ code: "0x9E1F", name: "THERMAL_RUNAWAY", prob: "92%", time: "<24h" });
-            }
-            if (faults.length === 0 && !isCritical) {
-                faults.push({ code: "0x0000", name: "NO_FAULTS", prob: "100%", time: "N/A" });
-            }
-        }
-
-        faults.forEach(f => {
-            const div = document.createElement('div');
-            div.className = 'fault-item';
-            div.innerHTML = `
-                <span class="fault-code">${f.code}: ${f.name}</span>
-                <span class="fault-prob">${f.prob} | ETA: ${f.time}</span>
-            `;
-            faultList.appendChild(div);
-        });
-
-        if (isCritical) {
-            actionPlan.innerHTML = isResonance 
-                ? "⚠️ <strong>STRUCTURAL ALERT:</strong> Chassis integrity compromised. Check mounting screws and panel alignment immediately."
-                : "⚠️ <strong>IMMEDIATE ACTION REQUIRED:</strong> Power down unit. Replace suspected component. Data backup mandatory.";
-            actionPlan.style.borderColor = "var(--neon-pink)";
-            actionPlan.style.color = "var(--neon-pink)";
-        } else if (isWarning) {
-            actionPlan.innerHTML = isResonance
-                ? "⚡ <strong>RESONANCE ANOMALY:</strong> Structural stress detected. Schedule physical inspection within 3 days."
-                : "⚡ <strong>SCHEDULE MAINTENANCE:</strong> Inspect within 7 days. Monitor temperature levels.";
-            actionPlan.style.borderColor = "var(--neon-yellow)";
-            actionPlan.style.color = "var(--neon-yellow)";
-        } else {
-            actionPlan.innerHTML = isResonance
-                ? "✅ <strong>STRUCTURAL NOMINAL:</strong> Chassis resonance within normal parameters. System stable."
-                : "✅ <strong>STATUS NOMINAL:</strong> Continue standard operation. Next scan recommended in 30 days.";
-            actionPlan.style.borderColor = "var(--neon-green)";
-            actionPlan.style.color = "var(--neon-green)";
+            scoreDisplay.style.color = "var(--lcars-red)";
+            html += `<div class="report-item alert-high"><span>STARE GENERALĂ:</span><span>CRITICĂ</span></div>`;
+            html += `<div class="report-item alert-high"><span>SUSPECT 1:</span><span>HDD MECHANICAL FAILURE</span></div>`;
+            html += `<div class="report-item alert-high"><span>SUSPECT 2:</span><span>COIL WHINE / PSU INSTABIL</span></div>`;
+            html += `<div class="report-item alert-high"><span>SEMNĂTURĂ:</span><span>TRANZIENTE BRUȘTE / HIGH ENERGY</span></div>`;
+            html += `<div class="report-item alert-high"><span>ACȚIUNE:</span><span>OPRIRE IMEDIATĂ / BACKUP</span></div>`;
         }
         
-        document.getElementById('report-id').innerText = `#QX-${Math.floor(Math.random() * 9000) + 1000}`;
+        reportContent.innerHTML = html;
     }
 
-    drawVisualizer(0);
+    function drawIdleVisualizer() {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = "#99ccff";
+        ctx.beginPath();
+        ctx.moveTo(0, canvas.height/2);
+        ctx.lineTo(canvas.width, canvas.height/2);
+        ctx.stroke();
+    }
+
+    function drawActiveVisualizer(dataArray) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        const barWidth = (canvas.width / dataArray.length) * 2.5;
+        let x = 0;
+
+        for(let i = 0; i < dataArray.length; i++) {
+            const barHeight = (dataArray[i] / 255) * canvas.height;
+            
+            if(dataArray[i] > 200) ctx.fillStyle = "#cc0000";
+            else if(dataArray[i] > 100) ctx.fillStyle = "#ff9900";
+            else ctx.fillStyle = "#99ccff";
+            
+            ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+            x += barWidth + 1;
+        }
+    }
 </script>
+
 </body>
 </html>
