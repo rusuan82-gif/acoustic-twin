@@ -11,7 +11,6 @@ permissions:
   id-token: write
 
 jobs:
-  # JOB 1: Antrenare + Web
   train-and-web:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -22,36 +21,25 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y libsndfile1 ffmpeg
 
-      - name: Install Python Packages (Python 3.12 Compatible)
+      - name: Install Python Packages
         run: |
           python -m pip install --upgrade pip setuptools wheel
           pip install numpy==1.26.4 librosa==0.10.2.post1 soundfile==0.12.1
           pip install tensorflow==2.17.1
-          
-          python -c "import tensorflow as tf; print('✅ TF OK:', tf.__version__)"
-          python -c "import librosa; print('✅ Librosa OK')"
 
       - name: Train & Export Model
         run: |
-          echo "🚀 Starting training..."
           python train.py --epochs 10
-          echo "🚀 Exporting weights..."
           python export_web.py
-          
           mkdir -p web-artifacts
           cp weights.js web-artifacts/weights.js
-          if [ -f index.html ]; then 
-            cp index.html web-artifacts/index.html
-          else 
-            echo "⚠️ Warning: index.html not found"
-          fi
+          if [ -f index.html ]; then cp index.html web-artifacts/index.html; fi
 
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: web-artifacts/
 
-  # JOB 2: Deploy Pages
   deploy-pages:
     needs: train-and-web
     runs-on: ubuntu-latest
@@ -63,7 +51,6 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-  # JOB 3: Build AAB (Android App Bundle pentru Google Play)
   build-aab:
     needs: train-and-web
     runs-on: ubuntu-latest
@@ -74,11 +61,7 @@ jobs:
       - name: Check Flutter Project
         id: check_flutter
         run: |
-          if [ -f "pubspec.yaml" ]; then
-            echo "flutter_exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "flutter_exists=false" >> $GITHUB_OUTPUT
-          fi
+          if [ -f "pubspec.yaml" ]; then echo "flutter_exists=true" >> $GITHUB_OUTPUT; else echo "flutter_exists=false" >> $GITHUB_OUTPUT; fi
 
       - name: Download Trained Weights
         if: steps.check_flutter.outputs.flutter_exists == 'true'
@@ -92,17 +75,7 @@ jobs:
         run: |
           pip install numpy==1.26.4 --quiet
           mkdir -p assets/models
-          python -c "
-          import numpy as np, json, os
-          baseline_path = 'models/baseline.npz'
-          if os.path.exists(baseline_path):
-              d = np.load(baseline_path)
-              data = {'mu': float(d['mu']), 'sigma': float(d['sigma'])}
-          else:
-              data = {'mu': 0.0, 'sigma': 1.0}
-          json.dump(data, open('assets/models/baseline.json', 'w'))
-          print('✅ Baseline JSON generat:', data)
-          "
+          python -c "import numpy as np, json, os; d=np.load('models/baseline.npz') if os.path.exists('models/baseline.npz') else {'mu':0,'sigma':1}; json.dump({'mu':float(d['mu']),'sigma':float(d['sigma'])}, open('assets/models/baseline.json','w'))"
 
       - name: Setup Flutter
         if: steps.check_flutter.outputs.flutter_exists == 'true'
@@ -114,19 +87,21 @@ jobs:
       - name: Scaffold Android Project
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: |
-          flutter create . --org com.example --project-name acoustic_twin --platforms android
-          cp custom/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
-          mkdir -p android/app/src/main/kotlin/com/example/acoustic_twin
-          cp custom/MainActivity.kt android/app/src/main/kotlin/com/example/acoustic_twin/MainActivity.kt
+          # ✅ SETĂM PACKAGE NAME-UL CORECT: com.rusuan82.acoustictwin
+          flutter create . --org com.rusuan82 --project-name acoustictwin --platforms android
+          
+          # Configurăm MainActivity în directorul corect
+          mkdir -p android/app/src/main/kotlin/com/rusuan82/acoustictwin
+          if [ -f "custom/MainActivity.kt" ]; then cp custom/MainActivity.kt android/app/src/main/kotlin/com/rusuan82/acoustictwin/MainActivity.kt; fi
+          if [ -f "custom/AndroidManifest.xml" ]; then cp custom/AndroidManifest.xml android/app/src/main/AndroidManifest.xml; fi
 
-      # ✅ FIX DEFINITIV: Generare Keystore + build.gradle complet nou
       - name: Setup Keystore and Generate Build Gradle
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: |
           # 1. Generăm keystore
           keytool -genkey -v -keystore android/app/release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload -storepass android -keypass android -dname "CN=AcousticTwin, OU=Dev, O=Dev, L=City, S=State, C=US"
           
-          # 2. Generăm un build.gradle complet nou, corect configurat
+          # 2. Generăm un build.gradle complet nou, corect configurat pentru AAB
           cat <<EOF > android/app/build.gradle
           plugins {
               id "com.android.application"
@@ -137,23 +112,17 @@ jobs:
           def localProperties = new Properties()
           def localPropertiesFile = rootProject.file('local.properties')
           if (localPropertiesFile.exists()) {
-              localPropertiesFile.withReader('UTF-8') { reader ->
-                  localProperties.load(reader)
-              }
+              localPropertiesFile.withReader('UTF-8') { reader -> localProperties.load(reader) }
           }
 
           def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
-          if (flutterVersionCode == null) {
-              flutterVersionCode = '1'
-          }
+          if (flutterVersionCode == null) { flutterVersionCode = '1' }
 
           def flutterVersionName = localProperties.getProperty('flutter.versionName')
-          if (flutterVersionName == null) {
-              flutterVersionName = '1.0'
-          }
+          if (flutterVersionName == null) { flutterVersionName = '1.0' }
 
           android {
-              namespace "com.example.acoustic_twin"
+              namespace "com.rusuan82.acoustictwin"
               compileSdk flutter.compileSdkVersion
               ndkVersion flutter.ndkVersion
 
@@ -162,16 +131,12 @@ jobs:
                   targetCompatibility JavaVersion.VERSION_1_8
               }
 
-              kotlinOptions {
-                  jvmTarget = '1.8'
-              }
+              kotlinOptions { jvmTarget = '1.8' }
 
-              sourceSets {
-                  main.java.srcDirs += 'src/main/kotlin'
-              }
+              sourceSets { main.java.srcDirs += 'src/main/kotlin' }
 
               defaultConfig {
-                  applicationId "com.example.acoustic_twin"
+                  applicationId "com.rusuan82.acoustictwin"
                   minSdkVersion 26
                   targetSdkVersion flutter.targetSdkVersion
                   versionCode flutterVersionCode.toInteger()
@@ -194,10 +159,7 @@ jobs:
               }
           }
 
-          flutter {
-              source '../..'
-          }
-
+          flutter { source '../..' }
           dependencies {}
           EOF
 
