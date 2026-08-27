@@ -122,68 +122,48 @@ jobs:
           # Setăm minSdkVersion la 26
           sed -i 's/flutter\.minSdkVersion/26/g' android/app/build.gradle
 
-      # ✅ PAS NOU: Generare Keystore pentru Semnare (Obligatoriu pentru AAB)
-      - name: Setup Keystore for Signing
+      # ✅ FIX SEMNARE: Generare Keystore + Configurare Gradle Simplificată
+      - name: Setup Keystore and Signing Config
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: |
-          # Generăm un keystore temporar
+          # 1. Generăm keystore
           keytool -genkey -v -keystore android/app/release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload -storepass android -keypass android -dname "CN=AcousticTwin, OU=Dev, O=Dev, L=City, S=State, C=US"
           
-          # Creăm key.properties
-          echo "storeFile=release-key.jks" >> android/key.properties
-          echo "storePassword=android" >> android/key.properties
-          echo "keyAlias=upload" >> android/key.properties
-          echo "keyPassword=android" >> android/key.properties
-
-      # ✅ PAS NOU: Configurare Gradle pentru Semnare
-      - name: Configure Build Gradle for Signing
-        if: steps.check_flutter.outputs.flutter_exists == 'true'
-        run: |
-          # Adăugăm signingConfigs în android/app/build.gradle
-          # Folosim un script python pentru a modifica fișierul gradle în siguranță
-          python3 << 'EOF'
-          import re
-
-          with open('android/app/build.gradle', 'r') as f:
-              content = f.read()
-
-          # Adăugăm signingConfigs după android {
-          signing_config = '''
-              signingConfigs {
-                  release {
-                      keyAlias project.findProperty("keyAlias") ?: "upload"
-                      keyPassword project.findProperty("keyPassword") ?: "android"
-                      storeFile file(project.findProperty("storeFile") ?: "release-key.jks")
-                      storePassword project.findProperty("storePassword") ?: "android"
-                  }
-              }
-          '''
-          
-          # Inserăm signingConfigs dacă nu există
-          if 'signingConfigs' not in content:
-              content = content.replace('android {', 'android {' + signing_config, 1)
-
-          # Adăugăm signingConfig signingConfigs.release în buildTypes release
-          if 'signingConfig signingConfigs.release' not in content:
-              # Căutăm buildTypes { release { și adăugăm linia
-              content = re.sub(
-                  r'(buildTypes\s*{[^}]*release\s*{)',
-                  r'\1\n            signingConfig signingConfigs.release',
-                  content
-              )
-
-          with open('android/app/build.gradle', 'w') as f:
-              f.write(content)
-          
-          print("✅ Gradle configurat pentru semnare")
+          # 2. Creăm key.properties
+          cat <<EOF > android/key.properties
+          storePassword=android
+          keyPassword=android
+          keyAlias=upload
+          storeFile=release-key.jks
           EOF
+          
+          # 3. Modificăm build.gradle pentru a încărca proprietățile și a configura semnarea
+          # Adăugăm încărcarea proprietăților la începutul fișierului (după plugins)
+          sed -i '/def flutterRoot/a\
+          def keystoreProperties = new Properties()\
+          def keystorePropertiesFile = rootProject.file("key.properties")\
+          if (keystorePropertiesFile.exists()) {\
+              keystoreProperties.load(new FileInputStream(keystorePropertiesFile))\
+          }' android/app/build.gradle
+          
+          # Adăugăm signingConfigs în blocul android
+          sed -i '/android {/a\
+              signingConfigs {\
+                  release {\
+                      keyAlias keystoreProperties["keyAlias"]\
+                      keyPassword keystoreProperties["keyPassword"]\
+                      storeFile keystoreProperties["storeFile"] ? file(keystoreProperties["storeFile"]) : null\
+                      storePassword keystoreProperties["storePassword"]\
+                  }\
+              }' android/app/build.gradle
+          
+          # Configurăm buildTypes release să folosească signingConfig
+          sed -i 's/buildTypes {/buildTypes {\n        release {\n            signingConfig signingConfigs.release\n        }/' android/app/build.gradle
 
-      # ✅ PAS MODIFICAT: Build AAB în loc de APK
       - name: Build AAB (Android App Bundle)
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: flutter build appbundle --release --no-tree-shake-icons
 
-      # ✅ PAS MODIFICAT: Upload AAB
       - name: Upload AAB
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         uses: actions/upload-artifact@v4
