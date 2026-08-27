@@ -93,11 +93,15 @@ jobs:
           if [ -f "custom/MainActivity.kt" ]; then cp custom/MainActivity.kt android/app/src/main/kotlin/com/rusuan82/acoustictwin/MainActivity.kt; fi
           if [ -f "custom/AndroidManifest.xml" ]; then cp custom/AndroidManifest.xml android/app/src/main/AndroidManifest.xml; fi
 
-      # ✅ FIX CRITIC: Actualizare AGP pentru suport API 35
+      # ✅ FIX CRITIC: Actualizare Gradle Wrapper la 8.7 (necesar pentru AGP 8.5+)
+      - name: Update Gradle Wrapper to 8.7
+        if: steps.check_flutter.outputs.flutter_exists == 'true'
+        run: |
+          sed -i 's/gradle-8.3-all.zip/gradle-8.7-all.zip/g' android/gradle/wrapper/gradle-wrapper.properties
+
       - name: Update Android Gradle Plugin for API 35
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: |
-          # Actualizăm build.gradle la nivel de proiect pentru a folosi AGP 8.5.0+
           cat <<EOF > android/build.gradle
           allprojects {
               repositories {
@@ -119,7 +123,6 @@ jobs:
           }
           EOF
 
-          # Actualizăm settings.gradle pentru a include plugin-ul AGP nou
           cat <<EOF > android/settings.gradle
           pluginManagement {
               def flutterSdkPath = {
