@@ -118,47 +118,88 @@ jobs:
           cp custom/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
           mkdir -p android/app/src/main/kotlin/com/example/acoustic_twin
           cp custom/MainActivity.kt android/app/src/main/kotlin/com/example/acoustic_twin/MainActivity.kt
-          
-          # Setăm minSdkVersion la 26
-          sed -i 's/flutter\.minSdkVersion/26/g' android/app/build.gradle
 
-      # ✅ FIX SEMNARE: Generare Keystore + Configurare Gradle Simplificată
-      - name: Setup Keystore and Signing Config
+      # ✅ FIX DEFINITIV: Generare Keystore + build.gradle complet nou
+      - name: Setup Keystore and Generate Build Gradle
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: |
           # 1. Generăm keystore
           keytool -genkey -v -keystore android/app/release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload -storepass android -keypass android -dname "CN=AcousticTwin, OU=Dev, O=Dev, L=City, S=State, C=US"
           
-          # 2. Creăm key.properties
-          cat <<EOF > android/key.properties
-          storePassword=android
-          keyPassword=android
-          keyAlias=upload
-          storeFile=release-key.jks
+          # 2. Generăm un build.gradle complet nou, corect configurat
+          cat <<EOF > android/app/build.gradle
+          plugins {
+              id "com.android.application"
+              id "kotlin-android"
+              id "dev.flutter.flutter-gradle-plugin"
+          }
+
+          def localProperties = new Properties()
+          def localPropertiesFile = rootProject.file('local.properties')
+          if (localPropertiesFile.exists()) {
+              localPropertiesFile.withReader('UTF-8') { reader ->
+                  localProperties.load(reader)
+              }
+          }
+
+          def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
+          if (flutterVersionCode == null) {
+              flutterVersionCode = '1'
+          }
+
+          def flutterVersionName = localProperties.getProperty('flutter.versionName')
+          if (flutterVersionName == null) {
+              flutterVersionName = '1.0'
+          }
+
+          android {
+              namespace "com.example.acoustic_twin"
+              compileSdk flutter.compileSdkVersion
+              ndkVersion flutter.ndkVersion
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_1_8
+                  targetCompatibility JavaVersion.VERSION_1_8
+              }
+
+              kotlinOptions {
+                  jvmTarget = '1.8'
+              }
+
+              sourceSets {
+                  main.java.srcDirs += 'src/main/kotlin'
+              }
+
+              defaultConfig {
+                  applicationId "com.example.acoustic_twin"
+                  minSdkVersion 26
+                  targetSdkVersion flutter.targetSdkVersion
+                  versionCode flutterVersionCode.toInteger()
+                  versionName flutterVersionName
+              }
+
+              signingConfigs {
+                  release {
+                      storeFile file("release-key.jks")
+                      storePassword "android"
+                      keyAlias "upload"
+                      keyPassword "android"
+                  }
+              }
+
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                  }
+              }
+          }
+
+          flutter {
+              source '../..'
+          }
+
+          dependencies {}
           EOF
-          
-          # 3. Modificăm build.gradle pentru a încărca proprietățile și a configura semnarea
-          # Adăugăm încărcarea proprietăților la începutul fișierului (după plugins)
-          sed -i '/def flutterRoot/a\
-          def keystoreProperties = new Properties()\
-          def keystorePropertiesFile = rootProject.file("key.properties")\
-          if (keystorePropertiesFile.exists()) {\
-              keystoreProperties.load(new FileInputStream(keystorePropertiesFile))\
-          }' android/app/build.gradle
-          
-          # Adăugăm signingConfigs în blocul android
-          sed -i '/android {/a\
-              signingConfigs {\
-                  release {\
-                      keyAlias keystoreProperties["keyAlias"]\
-                      keyPassword keystoreProperties["keyPassword"]\
-                      storeFile keystoreProperties["storeFile"] ? file(keystoreProperties["storeFile"]) : null\
-                      storePassword keystoreProperties["storePassword"]\
-                  }\
-              }' android/app/build.gradle
-          
-          # Configurăm buildTypes release să folosească signingConfig
-          sed -i 's/buildTypes {/buildTypes {\n        release {\n            signingConfig signingConfigs.release\n        }/' android/app/build.gradle
 
       - name: Build AAB (Android App Bundle)
         if: steps.check_flutter.outputs.flutter_exists == 'true'
