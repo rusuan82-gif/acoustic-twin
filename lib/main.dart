@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 // --- CLASA DE EMISIE ULTRASONICĂ ---
@@ -12,24 +14,76 @@ class UltrasonicEmitter {
   bool isPlaying = false;
   
   AudioPlayer? _player;
+  String? _tempFilePath;
 
   Future<void> start() async {
     if (isPlaying) return;
     isPlaying = true;
-    
-    final duration = 2.0;
-    final samples = (sampleRate * duration).toInt();
-    final buffer = Int16List(samples);
-    
-    for (int i = 0; i < samples; i++) {
-      double t = i / sampleRate;
-      double value = math.sin(2 * math.pi * frequency * t);
-      buffer[i] = (value * 32767).toInt().clamp(-32768, 32767);
-    }
 
-    _player = AudioPlayer.memory(buffer.buffer.asUint8List());
-    await _player?.setReleaseMode(ReleaseMode.loop);
-    await _player?.play();
+    try {
+      // Generăm un buffer WAV simplu în memorie
+      final duration = 1.0; // 1 secundă loop
+      final samples = (sampleRate * duration).toInt();
+      final buffer = Int16List(samples);
+      
+      for (int i = 0; i < samples; i++) {
+        double t = i / sampleRate;
+        double value = math.sin(2 * math.pi * frequency * t);
+        buffer[i] = (value * 32767).toInt().clamp(-32768, 32767);
+      }
+
+      // Convertim în bytes WAV (header simplificat)
+      final byteData = ByteData(44 + buffer.length * 2);
+      // RIFF header
+      byteData.setUint8(0, 0x52); // R
+      byteData.setUint8(1, 0x49); // I
+      byteData.setUint8(2, 0x46); // F
+      byteData.setUint8(3, 0x46); // F
+      byteData.setUint32(4, 36 + buffer.length * 2, Endian.little); // ChunkSize
+      byteData.setUint8(8, 0x57); // W
+      byteData.setUint8(9, 0x41); // A
+      byteData.setUint8(10, 0x56); // V
+      byteData.setUint8(11, 0x45); // E
+      // fmt subchunk
+      byteData.setUint8(12, 0x66); // f
+      byteData.setUint8(13, 0x6D); // m
+      byteData.setUint8(14, 0x74); // t
+      byteData.setUint8(15, 0x20); // space
+      byteData.setUint32(16, 16, Endian.little); // Subchunk1Size
+      byteData.setUint16(20, 1, Endian.little); // AudioFormat (PCM)
+      byteData.setUint16(22, 1, Endian.little); // NumChannels
+      byteData.setUint32(24, sampleRate, Endian.little); // SampleRate
+      byteData.setUint32(28, sampleRate * 2, Endian.little); // ByteRate
+      byteData.setUint16(32, 2, Endian.little); // BlockAlign
+      byteData.setUint16(34, 16, Endian.little); // BitsPerSample
+      // data subchunk
+      byteData.setUint8(36, 0x64); // d
+      byteData.setUint8(37, 0x61); // a
+      byteData.setUint8(38, 0x74); // t
+      byteData.setUint8(39, 0x61); // a
+      byteData.setUint32(40, buffer.length * 2, Endian.little); // Subchunk2Size
+      
+      // Scriem datele audio
+      for (int i = 0; i < buffer.length; i++) {
+        byteData.setInt16(44 + i * 2, buffer[i], Endian.little);
+      }
+
+      // Salvăm într-un fișier temporar
+      final directory = await getTemporaryDirectory();
+      _tempFilePath = '${directory.path}/ultrasonic.wav';
+      final file = File(_tempFilePath!);
+      await file.writeAsBytes(byteData.buffer.asUint8List());
+
+      // Redăm fișierul
+      _player = AudioPlayer();
+      await _player!.setSource(DeviceFileSource(_tempFilePath!));
+      await _player!.setReleaseMode(ReleaseMode.loop);
+      await _player!.resume();
+      
+    } catch (e) {
+      print("Eroare la emiterea sunetului: $e");
+      isPlaying = false;
+    }
   }
 
   Future<void> stop() async {
@@ -37,6 +91,13 @@ class UltrasonicEmitter {
     await _player?.stop();
     await _player?.dispose();
     _player = null;
+    
+    // Ștergem fișierul temporar
+    if (_tempFilePath != null) {
+      try {
+        await File(_tempFilePath!).delete();
+      } catch (e) {}
+    }
   }
 }
 
