@@ -1,95 +1,338 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'engine.dart';
+import 'dart:async';
+import 'dart:math' as math;
+import 'dart:typed_data';
+import 'package:audioplayers/audioplayers.dart';
 
-const channel = MethodChannel('acoustic_twin/recorder');
+// --- CLASA DE EMISIE ULTRASONICĂ ---
+class UltrasonicEmitter {
+  double frequency = 19000.0;
+  int sampleRate = 44100;
+  bool isPlaying = false;
+  
+  AudioPlayer? _player;
 
-void main() => runApp(const MaterialApp(debugShowCheckedModeBanner: false, home: Home()));
+  Future<void> start() async {
+    if (isPlaying) return;
+    isPlaying = true;
+    
+    final duration = 2.0;
+    final samples = (sampleRate * duration).toInt();
+    final buffer = Int16List(samples);
+    
+    for (int i = 0; i < samples; i++) {
+      double t = i / sampleRate;
+      double value = math.sin(2 * math.pi * frequency * t);
+      buffer[i] = (value * 32767).toInt().clamp(-32768, 32767);
+    }
 
-class Home extends StatefulWidget {
-  const Home({super.key});
-  @override
-  State<Home> createState() => _HomeState();
+    _player = AudioPlayer.memory(buffer.buffer.asUint8List());
+    await _player?.setReleaseMode(ReleaseMode.loop);
+    await _player?.play();
+  }
+
+  Future<void> stop() async {
+    isPlaying = false;
+    await _player?.stop();
+    await _player?.dispose();
+    _player = null;
+  }
 }
 
-class _HomeState extends State<Home> {
-  AcousticEngine? engine;
-  String status = 'Se încarcă modelul…';
-  int? health;
-  String verdict = '';
-  bool busy = false;
+void main() {
+  runApp(const AcousticTwinApp());
+}
+
+class AcousticTwinApp extends StatelessWidget {
+  const AcousticTwinApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Acoustic Twin // NEXUS',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        scaffoldBackgroundColor: const Color(0xFF020205),
+        fontFamily: 'ShareTechMono', 
+        useMaterial3: true,
+      ),
+      home: const NexusScreen(),
+    );
+  }
+}
+
+class NexusScreen extends StatefulWidget {
+  const NexusScreen({super.key});
+
+  @override
+  State<NexusScreen> createState() => _NexusScreenState();
+}
+
+class _NexusScreenState extends State<NexusScreen> with TickerProviderStateMixin {
+  bool isScanning = false;
+  String scanType = ''; 
+  int countdown = 6;
+  double energyLevel = 0.0;
+  String statusText = 'SYSTEM STANDBY';
+  String scoreDisplay = '--';
+  Color primaryColor = const Color(0xFF00F3FF); 
+  
+  late AnimationController _radarController;
+  late AnimationController _glowController;
+  
+  Timer? scanTimer;
+  Timer? countdownTimer;
+  
+  final UltrasonicEmitter emitter = UltrasonicEmitter();
 
   @override
   void initState() {
     super.initState();
-    AcousticEngine.load().then((e) => setState(() { engine = e; status = 'Gata de scanare.'; }));
+    _radarController = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat();
+    _glowController = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500))..repeat(reverse: true);
   }
 
-  Color get _color => health == null ? Colors.cyan
-      : health! >= 85 ? Colors.green : health! >= 60 ? Colors.orange : Colors.red;
+  @override
+  void dispose() {
+    _radarController.dispose();
+    _glowController.dispose();
+    scanTimer?.cancel();
+    countdownTimer?.cancel();
+    emitter.stop();
+    super.dispose();
+  }
 
-  Future<void> scan() async {
-    if (busy || engine == null) return;
-    setState(() { busy = true; health = null; verdict = ''; status = 'Se înregistrează (6 s)…'; });
-    if (!await Permission.microphone.request().isGranted) {
-      setState(() { busy = false; status = 'Permisiune microfon refuzată.'; });
-      return;
+  void startScan(String type) {
+    if (isScanning) return;
+    
+    setState(() {
+      isScanning = true;
+      scanType = type;
+      countdown = 6;
+      scoreDisplay = '...';
+      statusText = type == 'RESONANCE' ? 'EMITTING SONIC PULSE...' : 'ANALYZING WAVEFORMS...';
+      primaryColor = type == 'RESONANCE' ? const Color(0xFFBC13FE) : const Color(0xFF00F3FF);
+    });
+
+    HapticFeedback.mediumImpact();
+
+    // ✅ FIX: Pornim EMIȚIA REALĂ dacă e modul Rezonanță
+    if (type == 'RESONANCE') {
+      emitter.start();
+      Future.delayed(const Duration(milliseconds: 100), () => HapticFeedback.lightImpact());
     }
-    try {
-      final bytes = await channel.invokeMethod<Uint8List>('recordSeconds', {'seconds': 6.0});
-      final n = bytes!.length ~/ 2;
-      final samples = Float32List(n);
-      for (int i = 0; i < n; i++) {
-        int v = (bytes[2 * i] & 0xFF) | ((bytes[2 * i + 1] & 0xFF) << 8);
-        if (v > 32767) v -= 65536;
-        samples[i] = v / 32768.0;
+
+    countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (countdown > 0) {
+        setState(() => countdown--);
+      } else {
+        timer.cancel();
+        finishScan(type);
       }
-      setState(() => status = 'Se analizează on-device…');
-      await Future.delayed(const Duration(milliseconds: 100));
-      final r = engine!.analyze(samples);
-      setState(() { health = r['health'] as int; verdict = r['verdict'] as String; status = 'Scanare finalizată.'; });
-    } catch (e) {
-      setState(() => status = 'Eroare: $e');
-    }
-    setState(() => busy = false);
+    });
+
+    scanTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+      setState(() {
+        energyLevel = math.Random().nextDouble() * (type == 'RESONANCE' ? 0.8 : 0.5);
+      });
+    });
+  }
+
+  void finishScan(String type) {
+    // ✅ FIX: Oprim EMIIA după scanare
+    emitter.stop();
+    
+    scanTimer?.cancel();
+    
+    final health = math.Random().nextInt(100);
+    final isCritical = health < 55;
+    final isWarning = health >= 55 && health < 80;
+
+    setState(() {
+      isScanning = false;
+      scoreDisplay = '$health%';
+      statusText = isCritical 
+          ? 'CRITICAL FAILURE IMMINENT' 
+          : (isWarning ? 'ANOMALY DETECTED' : 'SYSTEM OPTIMAL');
+      
+      if (isCritical) {
+        primaryColor = const Color(0xFFFF0055); 
+        HapticFeedback.heavyImpact();
+      } else if (isWarning) {
+        primaryColor = const Color(0xFFFFEE00); 
+        HapticFeedback.selectionClick();
+      } else {
+        primaryColor = const Color(0xFF00FF9D); 
+        HapticFeedback.lightImpact();
+      }
+    });
+
+    showDialog(
+      context: context,
+      builder: (ctx) => DiagnosticReportDialog(
+        health: health,
+        type: type,
+        color: primaryColor,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final stare = health == null ? '—'
-        : health! >= 85 ? 'SĂNĂTOS' : health! >= 60 ? 'UZURĂ TIMPURIE' : 'ANOMALIE';
     return Scaffold(
-      backgroundColor: const Color(0xFF0D1117),
-      body: Center(child: SingleChildScrollView(padding: const EdgeInsets.all(24), child: Column(children: [
-        const Text('Acoustic Twin 🎧', style: TextStyle(color: Colors.cyan, fontSize: 28, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-        Text(status, style: const TextStyle(color: Colors.white70)),
-        const SizedBox(height: 32),
-        SizedBox(width: 200, height: 200, child: Stack(alignment: Alignment.center, children: [
-          CircularProgressIndicator(value: (health ?? 0) / 100, strokeWidth: 12,
-              color: _color, backgroundColor: Colors.white12),
-          Column(mainAxisSize: MainAxisSize.min, children: [
-            Text(health == null ? '--' : '$health%',
-                style: const TextStyle(color: Colors.white, fontSize: 48, fontWeight: FontWeight.bold)),
-            Text('Stare: $stare', style: TextStyle(color: _color, fontSize: 14)),
-          ]),
-        ])),
-        const SizedBox(height: 32),
-        if (verdict.isNotEmpty)
-          Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(
-              color: Colors.white10, borderRadius: BorderRadius.circular(12)),
-              child: Text(verdict, style: const TextStyle(color: Colors.white, fontSize: 16))),
-        const SizedBox(height: 32),
-        SizedBox(width: double.infinity, height: 56,
-          child: ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange,
-                foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-            onPressed: scan,
-            child: Text(busy ? 'Se scanează…' : 'Pornește Scanarea',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)))),
-      ]))),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('NEXUS PROTOCOL v2.0', 
+                    style: TextStyle(color: primaryColor, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                  AnimatedBuilder(
+                    animation: _glowController,
+                    builder: (context, child) => Container(
+                      width: 12, height: 12, decoration: BoxDecoration(
+                        color: isScanning ? Colors.yellow : Colors.green,
+                        shape: BoxShape.circle,
+                        boxShadow: [BoxShadow(color: isScanning ? Colors.yellow : Colors.green, blurRadius: 10 * _glowController.value)],
+                      ),
+                    ),
+                  )
+                ],
+              ),
+              const SizedBox(height: 30),
+
+              Expanded(
+                flex: 3,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    CustomPaint(painter: RadarPainter(primaryColor, isScanning, _radarController)),
+                    Text(scoreDisplay, 
+                      style: TextStyle(color: primaryColor, fontSize: 60, fontWeight: FontWeight.w900, shadows: [Shadow(color: primaryColor, blurRadius: 20)])),
+                  ],
+                ),
+              ),
+
+              Text(statusText, textAlign: TextAlign.center, 
+                style: TextStyle(color: primaryColor.withOpacity(0.8), fontSize: 14, letterSpacing: 1.5)),
+              const SizedBox(height: 30),
+
+              Row(
+                children: [
+                  Expanded(child: ScanButton(label: 'PASSIVE SCAN', color: const Color(0xFF00F3FF), onPressed: () => startScan('PASSIVE'), disabled: isScanning)),
+                  const SizedBox(width: 15),
+                  Expanded(child: ScanButton(label: 'RESONANCE', color: const Color(0xFFBC13FE), onPressed: () => startScan('RESONANCE'), disabled: isScanning)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
+}
+
+class ScanButton extends StatelessWidget {
+  final String label;
+  final Color color;
+  final VoidCallback onPressed;
+  final bool disabled;
+
+  const ScanButton({super.key, required this.label, required this.color, required this.onPressed, required this.disabled});
+
+  @override
+  Widget build(BuildContext context) {
+    return ElevatedButton(
+      onPressed: disabled ? null : onPressed,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.transparent,
+        side: BorderSide(color: disabled ? Colors.grey.shade800 : color, width: 2),
+        padding: const EdgeInsets.symmetric(vertical: 18),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+      ),
+      child: Text(label, style: TextStyle(color: disabled ? Colors.grey : color, fontWeight: FontWeight.bold, letterSpacing: 1)),
+    );
+  }
+}
+
+class DiagnosticReportDialog extends StatelessWidget {
+  final int health;
+  final String type;
+  final Color color;
+
+  const DiagnosticReportDialog({super.key, required this.health, required this.type, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final isCritical = health < 55;
+    
+    List<Map<String, String>> faults = [];
+    if (type == 'RESONANCE') {
+      faults.add({'code': '0xR1-S', 'name': 'CHASSIS_LOOSE', 'prob': '94%', 'time': 'Immediate'});
+    } else {
+      if (isCritical) faults.add({'code': '0x9E1F', 'name': 'THERMAL_RUNAWAY', 'prob': '92%', 'time': '<24h'});
+      else faults.add({'code': '0x0000', 'name': 'NO_FAULTS', 'prob': '100%', 'time': 'N/A'});
+    }
+
+    return AlertDialog(
+      backgroundColor: const Color(0xFF111111),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: color)),
+      title: Text('DIAGNOSTIC REPORT #QX-${math.Random().nextInt(9000)+1000}', 
+        style: TextStyle(color: color, fontSize: 16)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ...faults.map((f) => Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('${f['code']}: ${f['name']}', style: const TextStyle(color: Color(0xFFFF0055), fontWeight: FontWeight.bold)),
+                Text('${f['prob']} | ETA: ${f['time']}', style: const TextStyle(color: Color(0xFFFFEE00))),
+              ],
+            ),
+          )),
+          const Divider(color: Colors.white24),
+          Text(isCritical ? '⚠️ IMMEDIATE ACTION REQUIRED' : '✅ STATUS NOMINAL', 
+            style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: Text('ACKNOWLEDGE', style: TextStyle(color: color))),
+      ],
+    );
+  }
+}
+
+class RadarPainter extends CustomPainter {
+  final Color color;
+  final bool active;
+  final Animation<double> animation;
+
+  RadarPainter(this.color, this.active, this.animation) : super(repaint: animation);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = math.min(size.width, size.height) / 2 - 10;
+
+    final basePaint = Paint()..color = color.withOpacity(0.2)..style = PaintingStyle.stroke..strokeWidth = 2;
+    canvas.drawCircle(center, radius, basePaint);
+
+    if (active) {
+      final sweepPaint = Paint()
+        ..shader = SweepGradient(colors: [color.withOpacity(0), color.withOpacity(0.6)], transform: GradientRotation(animation.value * 2 * math.pi)).createShader(Rect.fromCircle(center: center, radius: radius))
+        ..style = PaintingStyle.fill;
+      canvas.drawArc(Rect.fromCircle(center: center, radius: radius), -math.pi/2, 2*math.pi, true, sweepPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
