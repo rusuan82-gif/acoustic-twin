@@ -11,6 +11,7 @@ permissions:
   id-token: write
 
 jobs:
+  # JOB 1: Antrenare + Web
   train-and-web:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -24,6 +25,7 @@ jobs:
       - name: Install Python Packages (Python 3.12 Compatible)
         run: |
           python -m pip install --upgrade pip setuptools wheel
+          # ✅ VERSIUNI COMPATIBILE CU PYTHON 3.12
           pip install numpy==1.26.4 librosa==0.10.2.post1 soundfile==0.12.1
           pip install tensorflow==2.17.1
           
@@ -45,11 +47,13 @@ jobs:
             echo "⚠️ Warning: index.html not found"
           fi
 
+      # ✅ FIX DEPLOY: Folosim upload-pages-artifact pentru a crea artifactul "github-pages"
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: web-artifacts/
 
+  # JOB 2: Deploy Pages (Simplificat)
   deploy-pages:
     needs: train-and-web
     runs-on: ubuntu-latest
@@ -61,6 +65,7 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
+  # JOB 3: APK
   build-apk:
     needs: train-and-web
     runs-on: ubuntu-latest
@@ -87,7 +92,9 @@ jobs:
       - name: Prepare Baseline JSON
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: |
+          # ✅ FIX: Instalăm numpy DOAR pentru acest pas
           pip install numpy==1.26.4 --quiet
+          
           mkdir -p assets/models
           python -c "
           import numpy as np, json, os
@@ -116,7 +123,7 @@ jobs:
           mkdir -p android/app/src/main/kotlin/com/example/acoustic_twin
           cp custom/MainActivity.kt android/app/src/main/kotlin/com/example/acoustic_twin/MainActivity.kt
           
-          # ✅ FIX: minSdkVersion 26 (necesar pentru tflite_flutter)
+          # ✅ FIX APK: Setăm minSdkVersion la 26 (necesar pentru tflite_flutter)
           sed -i 's/flutter\.minSdkVersion/26/g' android/app/build.gradle
 
       - name: Build APK
