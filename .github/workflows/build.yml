@@ -81,16 +81,16 @@ jobs:
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.3'
+          # ✅ FIX: Folosim o versiune mai nouă de Flutter care suportă API 35
+          flutter-version: '3.24.0' 
           cache: true
 
       - name: Scaffold Android Project
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: |
-          # ✅ SETĂM PACKAGE NAME-UL CORECT: com.rusuan82.acoustictwin
+          # Setăm package name-ul corect
           flutter create . --org com.rusuan82 --project-name acoustictwin --platforms android
           
-          # Configurăm MainActivity în directorul corect
           mkdir -p android/app/src/main/kotlin/com/rusuan82/acoustictwin
           if [ -f "custom/MainActivity.kt" ]; then cp custom/MainActivity.kt android/app/src/main/kotlin/com/rusuan82/acoustictwin/MainActivity.kt; fi
           if [ -f "custom/AndroidManifest.xml" ]; then cp custom/AndroidManifest.xml android/app/src/main/AndroidManifest.xml; fi
@@ -98,10 +98,10 @@ jobs:
       - name: Setup Keystore and Generate Build Gradle
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: |
-          # 1. Generăm keystore
+          # Generăm keystore
           keytool -genkey -v -keystore android/app/release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload -storepass android -keypass android -dname "CN=AcousticTwin, OU=Dev, O=Dev, L=City, S=State, C=US"
           
-          # 2. Generăm un build.gradle complet nou, corect configurat pentru AAB
+          # Generăm build.gradle cu API 35
           cat <<EOF > android/app/build.gradle
           plugins {
               id "com.android.application"
@@ -123,7 +123,7 @@ jobs:
 
           android {
               namespace "com.rusuan82.acoustictwin"
-              compileSdk flutter.compileSdkVersion
+              compileSdk 35
               ndkVersion flutter.ndkVersion
 
               compileOptions {
@@ -138,7 +138,7 @@ jobs:
               defaultConfig {
                   applicationId "com.rusuan82.acoustictwin"
                   minSdkVersion 26
-                  targetSdkVersion flutter.targetSdkVersion
+                  targetSdkVersion 35
                   versionCode flutterVersionCode.toInteger()
                   versionName flutterVersionName
               }
