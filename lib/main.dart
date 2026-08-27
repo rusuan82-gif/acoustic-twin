@@ -7,22 +7,16 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
 
-// --- CLASA DE EMISIE ULTRASONICĂ ---
-class UltrasonicEmitter {
+// --- SONAR REAL ENGINE (19kHz) ---
+class SonicSonar {
   double frequency = 19000.0;
   int sampleRate = 44100;
-  bool isPlaying = false;
-  
   AudioPlayer? _player;
-  String? _tempFilePath;
+  String? _tempPath;
 
-  Future<void> start() async {
-    if (isPlaying) return;
-    isPlaying = true;
-
+  Future<void> emitPulse() async {
     try {
-      // Generăm un buffer WAV simplu în memorie
-      final duration = 1.0; // 1 secundă loop
+      final duration = 1.0;
       final samples = (sampleRate * duration).toInt();
       final buffer = Int16List(samples);
       
@@ -32,92 +26,57 @@ class UltrasonicEmitter {
         buffer[i] = (value * 32767).toInt().clamp(-32768, 32767);
       }
 
-      // Convertim în bytes WAV (header simplificat)
       final byteData = ByteData(44 + buffer.length * 2);
-      // RIFF header
-      byteData.setUint8(0, 0x52); // R
-      byteData.setUint8(1, 0x49); // I
-      byteData.setUint8(2, 0x46); // F
-      byteData.setUint8(3, 0x46); // F
-      byteData.setUint32(4, 36 + buffer.length * 2, Endian.little); // ChunkSize
-      byteData.setUint8(8, 0x57); // W
-      byteData.setUint8(9, 0x41); // A
-      byteData.setUint8(10, 0x56); // V
-      byteData.setUint8(11, 0x45); // E
-      // fmt subchunk
-      byteData.setUint8(12, 0x66); // f
-      byteData.setUint8(13, 0x6D); // m
-      byteData.setUint8(14, 0x74); // t
-      byteData.setUint8(15, 0x20); // space
-      byteData.setUint32(16, 16, Endian.little); // Subchunk1Size
-      byteData.setUint16(20, 1, Endian.little); // AudioFormat (PCM)
-      byteData.setUint16(22, 1, Endian.little); // NumChannels
-      byteData.setUint32(24, sampleRate, Endian.little); // SampleRate
-      byteData.setUint32(28, sampleRate * 2, Endian.little); // ByteRate
-      byteData.setUint16(32, 2, Endian.little); // BlockAlign
-      byteData.setUint16(34, 16, Endian.little); // BitsPerSample
-      // data subchunk
-      byteData.setUint8(36, 0x64); // d
-      byteData.setUint8(37, 0x61); // a
-      byteData.setUint8(38, 0x74); // t
-      byteData.setUint8(39, 0x61); // a
-      byteData.setUint32(40, buffer.length * 2, Endian.little); // Subchunk2Size
+      byteData.setUint8(0, 0x52); byteData.setUint8(1, 0x49); byteData.setUint8(2, 0x46); byteData.setUint8(3, 0x46);
+      byteData.setUint32(4, 36 + buffer.length * 2, Endian.little);
+      byteData.setUint8(8, 0x57); byteData.setUint8(9, 0x41); byteData.setUint8(10, 0x56); byteData.setUint8(11, 0x45);
+      byteData.setUint8(12, 0x66); byteData.setUint8(13, 0x6D); byteData.setUint8(14, 0x74); byteData.setUint8(15, 0x20);
+      byteData.setUint32(16, 16, Endian.little);
+      byteData.setUint16(20, 1, Endian.little);
+      byteData.setUint16(22, 1, Endian.little);
+      byteData.setUint32(24, sampleRate, Endian.little);
+      byteData.setUint32(28, sampleRate * 2, Endian.little);
+      byteData.setUint16(32, 2, Endian.little);
+      byteData.setUint16(34, 16, Endian.little);
+      byteData.setUint8(36, 0x64); byteData.setUint8(37, 0x61); byteData.setUint8(38, 0x74); byteData.setUint8(39, 0x61);
+      byteData.setUint32(40, buffer.length * 2, Endian.little);
       
-      // Scriem datele audio
       for (int i = 0; i < buffer.length; i++) {
         byteData.setInt16(44 + i * 2, buffer[i], Endian.little);
       }
 
-      // Salvăm într-un fișier temporar
-      final directory = await getTemporaryDirectory();
-      _tempFilePath = '${directory.path}/ultrasonic.wav';
-      final file = File(_tempFilePath!);
-      await file.writeAsBytes(byteData.buffer.asUint8List());
+      final dir = await getTemporaryDirectory();
+      _tempPath = '${dir.path}/sonar_pulse.wav';
+      await File(_tempPath!).writeAsBytes(byteData.buffer.asUint8List());
 
-      // Redăm fișierul
       _player = AudioPlayer();
-      await _player!.setSource(DeviceFileSource(_tempFilePath!));
+      await _player!.setSource(DeviceFileSource(_tempPath!));
       await _player!.setReleaseMode(ReleaseMode.loop);
       await _player!.resume();
       
     } catch (e) {
-      print("Eroare la emiterea sunetului: $e");
-      isPlaying = false;
+      print("Sonar Error: $e");
     }
   }
 
   Future<void> stop() async {
-    isPlaying = false;
     await _player?.stop();
     await _player?.dispose();
-    _player = null;
-    
-    // Ștergem fișierul temporar
-    if (_tempFilePath != null) {
-      try {
-        await File(_tempFilePath!).delete();
-      } catch (e) {}
+    if (_tempPath != null) {
+      try { await File(_tempPath!).delete(); } catch (_) {}
     }
   }
 }
 
-void main() {
-  runApp(const AcousticTwinApp());
-}
+void main() => runApp(const AcousticTwinApp());
 
 class AcousticTwinApp extends StatelessWidget {
   const AcousticTwinApp({super.key});
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Acoustic Twin // NEXUS',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        scaffoldBackgroundColor: const Color(0xFF020205),
-        fontFamily: 'ShareTechMono', 
-        useMaterial3: true,
-      ),
+      theme: ThemeData(scaffoldBackgroundColor: const Color(0xFF020205), fontFamily: 'monospace'),
       home: const NexusScreen(),
     );
   }
@@ -125,43 +84,34 @@ class AcousticTwinApp extends StatelessWidget {
 
 class NexusScreen extends StatefulWidget {
   const NexusScreen({super.key});
-
   @override
   State<NexusScreen> createState() => _NexusScreenState();
 }
 
 class _NexusScreenState extends State<NexusScreen> with TickerProviderStateMixin {
   bool isScanning = false;
-  String scanType = ''; 
+  String mode = 'IDLE';
   int countdown = 6;
-  double energyLevel = 0.0;
-  String statusText = 'SYSTEM STANDBY';
-  String scoreDisplay = '--';
-  Color primaryColor = const Color(0xFF00F3FF); 
+  String score = '--';
+  Color themeColor = const Color(0xFF00F3FF);
   
-  late AnimationController _radarController;
-  late AnimationController _glowController;
-  
+  late AnimationController radarAnim;
+  final SonicSonar sonar = SonicSonar();
   Timer? scanTimer;
-  Timer? countdownTimer;
   
-  final UltrasonicEmitter emitter = UltrasonicEmitter();
+  // Date pentru Spectrogram
+  List<List<double>> spectrogramData = [];
+  final int spectrogramWidth = 60;
+  final int spectrogramHeight = 32;
 
   @override
   void initState() {
     super.initState();
-    _radarController = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat();
-    _glowController = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500))..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _radarController.dispose();
-    _glowController.dispose();
-    scanTimer?.cancel();
-    countdownTimer?.cancel();
-    emitter.stop();
-    super.dispose();
+    radarAnim = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat();
+    // Inițializăm spectrogramul cu zerouri
+    for (int i = 0; i < spectrogramWidth; i++) {
+      spectrogramData.add(List.filled(spectrogramHeight, 0.0));
+    }
   }
 
   void startScan(String type) {
@@ -169,72 +119,81 @@ class _NexusScreenState extends State<NexusScreen> with TickerProviderStateMixin
     
     setState(() {
       isScanning = true;
-      scanType = type;
+      mode = type;
       countdown = 6;
-      scoreDisplay = '...';
-      statusText = type == 'RESONANCE' ? 'EMITTING SONIC PULSE...' : 'ANALYZING WAVEFORMS...';
-      primaryColor = type == 'RESONANCE' ? const Color(0xFFBC13FE) : const Color(0xFF00F3FF);
+      score = '...';
+      themeColor = type == 'SONAR' ? const Color(0xFFBC13FE) : const Color(0xFF00F3FF);
+      // Resetăm spectrogramul
+      for (int i = 0; i < spectrogramWidth; i++) {
+        spectrogramData[i] = List.filled(spectrogramHeight, 0.0);
+      }
     });
 
     HapticFeedback.mediumImpact();
 
-    // ✅ FIX: Pornim EMIȚIA REALĂ dacă e modul Rezonanță
-    if (type == 'RESONANCE') {
-      emitter.start();
-      Future.delayed(const Duration(milliseconds: 100), () => HapticFeedback.lightImpact());
+    if (type == 'SONAR') {
+      sonar.emitPulse();
     }
 
-    countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (countdown > 0) {
+    scanTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (countdown > 1) {
         setState(() => countdown--);
       } else {
-        timer.cancel();
+        t.cancel();
         finishScan(type);
       }
     });
-
-    scanTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+    
+    // Simulăm date spectrogram în timp real
+    Timer.periodic(const Duration(milliseconds: 100), (t) {
+      if (!isScanning) {
+        t.cancel();
+        return;
+      }
       setState(() {
-        energyLevel = math.Random().nextDouble() * (type == 'RESONANCE' ? 0.8 : 0.5);
+        // Shiftăm datele spre stânga
+        for (int i = 0; i < spectrogramWidth - 1; i++) {
+          spectrogramData[i] = List.from(spectrogramData[i + 1]);
+        }
+        // Generăm o nouă coloană de date (simulare FFT)
+        List<double> newColumn = [];
+        for (int j = 0; j < spectrogramHeight; j++) {
+          double noise = math.Random().nextDouble() * 0.3;
+          double signal = (type == 'SONAR' && j > 20) ? 0.8 : 0.1; // Semnal puternic la frecvențe înalte pentru sonar
+          newColumn.add((noise + signal).clamp(0.0, 1.0));
+        }
+        spectrogramData[spectrogramWidth - 1] = newColumn;
       });
     });
   }
 
   void finishScan(String type) {
-    // ✅ FIX: Oprim EMIIA după scanare
-    emitter.stop();
-    
+    sonar.stop();
     scanTimer?.cancel();
     
-    final health = math.Random().nextInt(100);
-    final isCritical = health < 55;
-    final isWarning = health >= 55 && health < 80;
+    final health = math.Random().nextInt(30) + 65;
+    final entropy = (math.Random().nextDouble() * 1.5).toStringAsFixed(3);
+    final resonance = type == 'SONAR' ? '${(180 + math.Random().nextInt(40))} Hz' : 'N/A';
+    final integrity = type == 'SONAR' ? '${(90 + math.Random().nextInt(10))}%' : 'N/A';
 
     setState(() {
       isScanning = false;
-      scoreDisplay = '$health%';
-      statusText = isCritical 
-          ? 'CRITICAL FAILURE IMMINENT' 
-          : (isWarning ? 'ANOMALY DETECTED' : 'SYSTEM OPTIMAL');
-      
-      if (isCritical) {
-        primaryColor = const Color(0xFFFF0055); 
-        HapticFeedback.heavyImpact();
-      } else if (isWarning) {
-        primaryColor = const Color(0xFFFFEE00); 
-        HapticFeedback.selectionClick();
-      } else {
-        primaryColor = const Color(0xFF00FF9D); 
-        HapticFeedback.lightImpact();
-      }
+      mode = 'COMPLETE';
+      score = '$health%';
+      themeColor = health < 75 ? const Color(0xFFFF0055) : const Color(0xFF00FF9D);
     });
+
+    HapticFeedback.heavyImpact();
 
     showDialog(
       context: context,
-      builder: (ctx) => DiagnosticReportDialog(
+      builder: (_) => AdvancedReport(
         health: health,
-        type: type,
-        color: primaryColor,
+        mode: type,
+        entropy: entropy,
+        resonance: resonance,
+        integrity: integrity,
+        color: themeColor,
       ),
     );
   }
@@ -244,50 +203,70 @@ class _NexusScreenState extends State<NexusScreen> with TickerProviderStateMixin
     return Scaffold(
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(20.0),
+          padding: const EdgeInsets.all(20),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('NEXUS PROTOCOL v2.0', 
-                    style: TextStyle(color: primaryColor, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                  AnimatedBuilder(
-                    animation: _glowController,
-                    builder: (context, child) => Container(
-                      width: 12, height: 12, decoration: BoxDecoration(
-                        color: isScanning ? Colors.yellow : Colors.green,
-                        shape: BoxShape.circle,
-                        boxShadow: [BoxShadow(color: isScanning ? Colors.yellow : Colors.green, blurRadius: 10 * _glowController.value)],
-                      ),
-                    ),
-                  )
+                  Text('NEXUS PROTOCOL v3.0', style: TextStyle(color: themeColor, fontWeight: FontWeight.bold, fontSize: 18)),
+                  Container(width: 10, height: 10, decoration: BoxDecoration(color: isScanning ? Colors.yellow : Colors.green, shape: BoxShape.circle)),
                 ],
               ),
-              const SizedBox(height: 30),
-
-              Expanded(
-                flex: 3,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    CustomPaint(painter: RadarPainter(primaryColor, isScanning, _radarController)),
-                    Text(scoreDisplay, 
-                      style: TextStyle(color: primaryColor, fontSize: 60, fontWeight: FontWeight.w900, shadows: [Shadow(color: primaryColor, blurRadius: 20)])),
-                  ],
+              const SizedBox(height: 20),
+              
+              // SPECTROGRAM AUDIO VIZUAL
+              Container(
+                height: 120,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  border: Border.all(color: themeColor.withOpacity(0.3)),
+                  borderRadius: BorderRadius.circular(4),
+                  color: Colors.black,
+                ),
+                child: CustomPaint(
+                  painter: SpectrogramPainter(spectrogramData, themeColor),
                 ),
               ),
-
-              Text(statusText, textAlign: TextAlign.center, 
-                style: TextStyle(color: primaryColor.withOpacity(0.8), fontSize: 14, letterSpacing: 1.5)),
-              const SizedBox(height: 30),
-
+              
+              const SizedBox(height: 20),
+              
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  CustomPaint(size: const Size(150, 150), painter: RadarPainter(themeColor, radarAnim, isScanning)),
+                  Text(score, style: TextStyle(color: themeColor, fontSize: 40, fontWeight: FontWeight.w900, shadows: [Shadow(color: themeColor, blurRadius: 20)])),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Text(
+                isScanning 
+                  ? (mode == 'SONAR' ? 'EMITTING 19kHz PULSE...' : 'ANALYZING WAVEFORMS...') 
+                  : (mode == 'COMPLETE' ? 'SCAN COMPLETE' : 'SYSTEM STANDBY'),
+                style: TextStyle(color: themeColor.withOpacity(0.8), letterSpacing: 2, fontSize: 12),
+              ),
+              if (isScanning) ...[
+                const SizedBox(height: 10),
+                Text('T-$countdown', style: TextStyle(color: themeColor, fontSize: 24, fontWeight: FontWeight.bold)),
+              ],
+              const Spacer(),
               Row(
                 children: [
-                  Expanded(child: ScanButton(label: 'PASSIVE SCAN', color: const Color(0xFF00F3FF), onPressed: () => startScan('PASSIVE'), disabled: isScanning)),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: isScanning ? null : () => startScan('PASSIVE'),
+                      style: OutlinedButton.styleFrom(side: BorderSide(color: const Color(0xFF00F3FF)), padding: const EdgeInsets.symmetric(vertical: 20)),
+                      child: const Text('PASSIVE SCAN', style: TextStyle(color: Color(0xFF00F3FF))),
+                    ),
+                  ),
                   const SizedBox(width: 15),
-                  Expanded(child: ScanButton(label: 'RESONANCE', color: const Color(0xFFBC13FE), onPressed: () => startScan('RESONANCE'), disabled: isScanning)),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: isScanning ? null : () => startScan('SONAR'),
+                      style: OutlinedButton.styleFrom(side: BorderSide(color: const Color(0xFFBC13FE)), padding: const EdgeInsets.symmetric(vertical: 20)),
+                      child: const Text('SONAR SCAN', style: TextStyle(color: Color(0xFFBC13FE))),
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -298,99 +277,148 @@ class _NexusScreenState extends State<NexusScreen> with TickerProviderStateMixin
   }
 }
 
-class ScanButton extends StatelessWidget {
-  final String label;
-  final Color color;
-  final VoidCallback onPressed;
-  final bool disabled;
+// --- SPECTROGRAM PAINTER ---
+class SpectrogramPainter extends CustomPainter {
+  final List<List<double>> data;
+  final Color baseColor;
 
-  const ScanButton({super.key, required this.label, required this.color, required this.onPressed, required this.disabled});
+  SpectrogramPainter(this.data, this.baseColor);
 
   @override
-  Widget build(BuildContext context) {
-    return ElevatedButton(
-      onPressed: disabled ? null : onPressed,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.transparent,
-        side: BorderSide(color: disabled ? Colors.grey.shade800 : color, width: 2),
-        padding: const EdgeInsets.symmetric(vertical: 18),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-      ),
-      child: Text(label, style: TextStyle(color: disabled ? Colors.grey : color, fontWeight: FontWeight.bold, letterSpacing: 1)),
-    );
+  void paint(Canvas canvas, Size size) {
+    if (data.isEmpty) return;
+    
+    final cellWidth = size.width / data.length;
+    final cellHeight = size.height / data[0].length;
+
+    for (int x = 0; x < data.length; x++) {
+      for (int y = 0; y < data[x].length; y++) {
+        double intensity = data[x][y];
+        // Mapăm intensitatea la culoare (Albastru -> Cyan -> Galben -> Roșu)
+        Color cellColor;
+        if (intensity < 0.33) {
+          cellColor = Color.lerp(Colors.blue, Colors.cyan, intensity * 3)!;
+        } else if (intensity < 0.66) {
+          cellColor = Color.lerp(Colors.cyan, Colors.yellow, (intensity - 0.33) * 3)!;
+        } else {
+          cellColor = Color.lerp(Colors.yellow, Colors.red, (intensity - 0.66) * 3)!;
+        }
+        
+        canvas.drawRect(
+          Rect.fromLTWH(x * cellWidth, size.height - (y + 1) * cellHeight, cellWidth + 1, cellHeight + 1),
+          Paint()..color = cellColor.withOpacity(0.8),
+        );
+      }
+    }
   }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
 
-class DiagnosticReportDialog extends StatelessWidget {
+// --- RAPORT AVANSAT (FIX OVERFLOW) ---
+class AdvancedReport extends StatelessWidget {
   final int health;
-  final String type;
+  final String mode;
+  final String entropy;
+  final String resonance;
+  final String integrity;
   final Color color;
 
-  const DiagnosticReportDialog({super.key, required this.health, required this.type, required this.color});
+  const AdvancedReport({super.key, required this.health, required this.mode, required this.entropy, required this.resonance, required this.integrity, required this.color});
 
   @override
   Widget build(BuildContext context) {
-    final isCritical = health < 55;
-    
-    List<Map<String, String>> faults = [];
-    if (type == 'RESONANCE') {
-      faults.add({'code': '0xR1-S', 'name': 'CHASSIS_LOOSE', 'prob': '94%', 'time': 'Immediate'});
-    } else {
-      if (isCritical) faults.add({'code': '0x9E1F', 'name': 'THERMAL_RUNAWAY', 'prob': '92%', 'time': '<24h'});
-      else faults.add({'code': '0x0000', 'name': 'NO_FAULTS', 'prob': '100%', 'time': 'N/A'});
-    }
-
     return AlertDialog(
-      backgroundColor: const Color(0xFF111111),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: color)),
-      title: Text('DIAGNOSTIC REPORT #QX-${math.Random().nextInt(9000)+1000}', 
-        style: TextStyle(color: color, fontSize: 16)),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+      backgroundColor: const Color(0xFF0A0A0A),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: color, width: 2)),
+      title: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          ...faults.map((f) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('${f['code']}: ${f['name']}', style: const TextStyle(color: Color(0xFFFF0055), fontWeight: FontWeight.bold)),
-                Text('${f['prob']} | ETA: ${f['time']}', style: const TextStyle(color: Color(0xFFFFEE00))),
-              ],
-            ),
-          )),
-          const Divider(color: Colors.white24),
-          Text(isCritical ? '⚠️ IMMEDIATE ACTION REQUIRED' : '✅ STATUS NOMINAL', 
-            style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+          Text('DIAGNOSTIC REPORT', style: TextStyle(color: color, fontSize: 16)),
+          Text('#QX-${math.Random().nextInt(9000)}', style: TextStyle(color: color.withOpacity(0.5), fontSize: 12)),
         ],
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _row('SYSTEM HEALTH', '$health%', color),
+            _row('SCAN MODE', mode == 'SONAR' ? 'ACTIVE SONAR [19kHz]' : 'PASSIVE LISTENING', Colors.white70),
+            const Divider(height: 20, color: Colors.white24),
+            Text('// SPECTRAL ANALYSIS', style: TextStyle(color: color.withOpacity(0.7), fontSize: 12)),
+            const SizedBox(height: 8),
+            _row('Entropy Index', entropy, Colors.white),
+            _row('Resonance Peak', resonance, Colors.white),
+            _row('Structural Integrity', integrity, Colors.white),
+            const SizedBox(height: 15),
+            Text('// FAULT ISOLATION', style: TextStyle(color: color.withOpacity(0.7), fontSize: 12)),
+            const SizedBox(height: 8),
+            if (mode == 'SONAR') ...[
+              _fault('0xR1-S', 'CHASSIS MICRO-FRACTURE', '87%'),
+              _fault('0xR2-M', 'MOUNTING BOLT LOOSE', '64%'),
+            ] else ...[
+              _fault('0x9E1F', 'THERMAL RUNAWAY', health < 75 ? '92%' : '12%'),
+              _fault('0x0000', 'NO ANOMALIES', health >= 75 ? '100%' : '45%'),
+            ],
+            const SizedBox(height: 15),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(border: Border.all(color: color.withOpacity(0.3)), borderRadius: BorderRadius.circular(4)),
+              child: Text(
+                health < 75 
+                  ? '⚠️ CRITICAL: Immediate maintenance required. Structural failure imminent.'
+                  : '✅ NOMINAL: System operating within parameters. Next sweep in 30 days.',
+                style: TextStyle(color: color, fontSize: 11),
+              ),
+            ),
+          ],
+        ),
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: Text('ACKNOWLEDGE', style: TextStyle(color: color))),
       ],
     );
   }
+
+  Widget _row(String label, String val, Color c) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+      Flexible(child: Text(label, style: const TextStyle(color: Colors.white54, fontSize: 11), overflow: TextOverflow.ellipsis)),
+      const SizedBox(width: 8),
+      Text(val, style: TextStyle(color: c, fontSize: 12, fontWeight: FontWeight.bold)),
+    ]),
+  );
+
+  Widget _fault(String code, String name, String prob) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+      Flexible(child: Text('$code: $name', style: const TextStyle(color: Color(0xFFFF0055), fontSize: 10), overflow: TextOverflow.ellipsis)),
+      const SizedBox(width: 8),
+      Text(prob, style: const TextStyle(color: Color(0xFFFFEE00), fontSize: 10)),
+    ]),
+  );
 }
 
 class RadarPainter extends CustomPainter {
   final Color color;
+  final Animation<double> anim;
   final bool active;
-  final Animation<double> animation;
-
-  RadarPainter(this.color, this.active, this.animation) : super(repaint: animation);
+  RadarPainter(this.color, this.anim, this.active) : super(repaint: anim);
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = math.min(size.width, size.height) / 2 - 10;
-
-    final basePaint = Paint()..color = color.withOpacity(0.2)..style = PaintingStyle.stroke..strokeWidth = 2;
-    canvas.drawCircle(center, radius, basePaint);
-
+    final radius = size.width / 2;
+    canvas.drawCircle(center, radius, Paint()..color = color.withOpacity(0.3)..style = PaintingStyle.stroke..strokeWidth = 2);
     if (active) {
-      final sweepPaint = Paint()
-        ..shader = SweepGradient(colors: [color.withOpacity(0), color.withOpacity(0.6)], transform: GradientRotation(animation.value * 2 * math.pi)).createShader(Rect.fromCircle(center: center, radius: radius))
-        ..style = PaintingStyle.fill;
-      canvas.drawArc(Rect.fromCircle(center: center, radius: radius), -math.pi/2, 2*math.pi, true, sweepPaint);
+      final sweep = Paint()
+        ..shader = SweepGradient(
+          colors: [color.withOpacity(0), color.withOpacity(0.5)],
+          transform: GradientRotation(anim.value * 2 * math.pi),
+        ).createShader(Rect.fromCircle(center: center, radius: radius));
+      canvas.drawCircle(center, radius, sweep);
     }
   }
 
