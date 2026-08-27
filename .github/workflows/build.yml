@@ -25,7 +25,6 @@ jobs:
       - name: Install Python Packages (Python 3.12 Compatible)
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          # ✅ VERSIUNI COMPATIBILE CU PYTHON 3.12
           pip install numpy==1.26.4 librosa==0.10.2.post1 soundfile==0.12.1
           pip install tensorflow==2.17.1
           
@@ -47,13 +46,12 @@ jobs:
             echo "⚠️ Warning: index.html not found"
           fi
 
-      # ✅ FIX DEPLOY: Folosim upload-pages-artifact pentru a crea artifactul "github-pages"
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: web-artifacts/
 
-  # JOB 2: Deploy Pages (Simplificat)
+  # JOB 2: Deploy Pages
   deploy-pages:
     needs: train-and-web
     runs-on: ubuntu-latest
@@ -65,8 +63,8 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-  # JOB 3: APK
-  build-apk:
+  # JOB 3: Build AAB (Android App Bundle pentru Google Play)
+  build-aab:
     needs: train-and-web
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -92,9 +90,7 @@ jobs:
       - name: Prepare Baseline JSON
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: |
-          # ✅ FIX: Instalăm numpy DOAR pentru acest pas
           pip install numpy==1.26.4 --quiet
-          
           mkdir -p assets/models
           python -c "
           import numpy as np, json, os
@@ -123,16 +119,74 @@ jobs:
           mkdir -p android/app/src/main/kotlin/com/example/acoustic_twin
           cp custom/MainActivity.kt android/app/src/main/kotlin/com/example/acoustic_twin/MainActivity.kt
           
-          # ✅ FIX APK: Setăm minSdkVersion la 26 (necesar pentru tflite_flutter)
+          # Setăm minSdkVersion la 26
           sed -i 's/flutter\.minSdkVersion/26/g' android/app/build.gradle
 
-      - name: Build APK
+      # ✅ PAS NOU: Generare Keystore pentru Semnare (Obligatoriu pentru AAB)
+      - name: Setup Keystore for Signing
         if: steps.check_flutter.outputs.flutter_exists == 'true'
-        run: flutter build apk --debug --no-tree-shake-icons --split-per-abi
+        run: |
+          # Generăm un keystore temporar
+          keytool -genkey -v -keystore android/app/release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload -storepass android -keypass android -dname "CN=AcousticTwin, OU=Dev, O=Dev, L=City, S=State, C=US"
+          
+          # Creăm key.properties
+          echo "storeFile=release-key.jks" >> android/key.properties
+          echo "storePassword=android" >> android/key.properties
+          echo "keyAlias=upload" >> android/key.properties
+          echo "keyPassword=android" >> android/key.properties
 
-      - name: Upload APK
+      # ✅ PAS NOU: Configurare Gradle pentru Semnare
+      - name: Configure Build Gradle for Signing
+        if: steps.check_flutter.outputs.flutter_exists == 'true'
+        run: |
+          # Adăugăm signingConfigs în android/app/build.gradle
+          # Folosim un script python pentru a modifica fișierul gradle în siguranță
+          python3 << 'EOF'
+          import re
+
+          with open('android/app/build.gradle', 'r') as f:
+              content = f.read()
+
+          # Adăugăm signingConfigs după android {
+          signing_config = '''
+              signingConfigs {
+                  release {
+                      keyAlias project.findProperty("keyAlias") ?: "upload"
+                      keyPassword project.findProperty("keyPassword") ?: "android"
+                      storeFile file(project.findProperty("storeFile") ?: "release-key.jks")
+                      storePassword project.findProperty("storePassword") ?: "android"
+                  }
+              }
+          '''
+          
+          # Inserăm signingConfigs dacă nu există
+          if 'signingConfigs' not in content:
+              content = content.replace('android {', 'android {' + signing_config, 1)
+
+          # Adăugăm signingConfig signingConfigs.release în buildTypes release
+          if 'signingConfig signingConfigs.release' not in content:
+              # Căutăm buildTypes { release { și adăugăm linia
+              content = re.sub(
+                  r'(buildTypes\s*{[^}]*release\s*{)',
+                  r'\1\n            signingConfig signingConfigs.release',
+                  content
+              )
+
+          with open('android/app/build.gradle', 'w') as f:
+              f.write(content)
+          
+          print("✅ Gradle configurat pentru semnare")
+          EOF
+
+      # ✅ PAS MODIFICAT: Build AAB în loc de APK
+      - name: Build AAB (Android App Bundle)
+        if: steps.check_flutter.outputs.flutter_exists == 'true'
+        run: flutter build appbundle --release --no-tree-shake-icons
+
+      # ✅ PAS MODIFICAT: Upload AAB
+      - name: Upload AAB
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: acoustic-twin-apk
-          path: build/app/outputs/flutter-apk/
+          name: acoustic-twin-aab
+          path: build/app/outputs/bundle/release/app-release.aab
