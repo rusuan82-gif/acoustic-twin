@@ -16,27 +16,20 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      
       - name: Setup System Dependencies
         run: |
           sudo apt-get update && sudo apt-get install -y libsndfile1 ffmpeg
-
       - name: Install Python Packages
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          pip install numpy==1.26.4 librosa==0.10.2.post1 soundfile==0.12.1
-          pip install tensorflow==2.17.1
-
+          pip install numpy==1.26.4 librosa==0.10.2.post1 soundfile==0.12.1 tensorflow==2.17.1
       - name: Train & Export Model
         run: |
           python train.py --epochs 10
           python export_web.py
           mkdir -p web-artifacts
           cp weights.js web-artifacts/weights.js
-          if [ -f index.html ]; then cp index.html web-artifacts/index.html; fi
-          # ✅ FIX 404: Copiem și Politica de Confidențialitate
-          if [ -f privacy.html ]; then cp privacy.html web-artifacts/privacy.html; fi
-
+          [ -f index.html ] && cp index.html web-artifacts/index.html || echo "⚠️ index.html missing"
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -59,170 +52,74 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      
       - name: Check Flutter Project
         id: check_flutter
         run: |
-          if [ -f "pubspec.yaml" ]; then echo "flutter_exists=true" >> $GITHUB_OUTPUT; else echo "flutter_exists=false" >> $GITHUB_OUTPUT; fi
-
+          [ -f "pubspec.yaml" ] && echo "flutter_exists=true" >> $GITHUB_OUTPUT || echo "flutter_exists=false" >> $GITHUB_OUTPUT
       - name: Download Trained Weights
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         uses: actions/download-artifact@v4
         with:
           name: github-pages
           path: ./assets/models
-          
       - name: Prepare Baseline JSON
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: |
           pip install numpy==1.26.4 --quiet
           mkdir -p assets/models
-          python -c "import numpy as np, json, os; d=np.load('models/baseline.npz') if os.path.exists('models/baseline.npz') else {'mu':0,'sigma':1}; json.dump({'mu':float(d['mu']),'sigma':float(d['sigma'])}, open('assets/models/baseline.json','w'))"
-
+          python -c "
+          import numpy as np, json, os
+          d = np.load('models/baseline.npz') if os.path.exists('models/baseline.npz') else None
+          data = {'mu': float(d['mu']), 'sigma': float(d['sigma'])} if d else {'mu': 0.0, 'sigma': 1.0}
+          json.dump(data, open('assets/models/baseline.json', 'w'))
+          "
       - name: Setup Flutter
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.3' 
+          flutter-version: '3.22.3'
           cache: true
-
       - name: Scaffold Android Project
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: |
-          flutter create . --org com.rusuan82 --project-name acoustictwin --platforms android
-          mkdir -p android/app/src/main/kotlin/com/rusuan82/acoustictwin
-          if [ -f "custom/MainActivity.kt" ]; then cp custom/MainActivity.kt android/app/src/main/kotlin/com/rusuan82/acoustictwin/MainActivity.kt; fi
-          if [ -f "custom/AndroidManifest.xml" ]; then cp custom/AndroidManifest.xml android/app/src/main/AndroidManifest.xml; fi
-
-      # ✅ FIX: Update Gradle Wrapper to 8.7 (Necesar pentru AGP 8.5+)
-      - name: Update Gradle Wrapper to 8.7
-        if: steps.check_flutter.outputs.flutter_exists == 'true'
-        run: |
-          sed -i 's/gradle-8.3-all.zip/gradle-8.7-all.zip/g' android/gradle/wrapper/gradle-wrapper.properties
-
-      - name: Update Android Gradle Plugin for API 35
-        if: steps.check_flutter.outputs.flutter_exists == 'true'
-        run: |
-          cat <<EOF > android/build.gradle
-          allprojects {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-
-          rootProject.buildDir = '../build'
-          subprojects {
-              project.buildDir = "\${rootProject.buildDir}/\${project.name}"
-          }
-          subprojects {
-              project.evaluationDependsOn(':app')
-          }
-
-          tasks.register("clean", Delete) {
-              delete rootProject.buildDir
-          }
-          EOF
-
-          cat <<EOF > android/settings.gradle
-          pluginManagement {
-              def flutterSdkPath = {
-                  def properties = new Properties()
-                  file("local.properties").withInputStream { properties.load(it) }
-                  def flutterSdkPath = properties.getProperty("flutter.sdk")
-                  assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
-                  return flutterSdkPath
-              }
-              settings.ext.flutterSdkPath = flutterSdkPath()
-
-              includeBuild("\${settings.ext.flutterSdkPath}/packages/flutter_tools/gradle")
-
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
-
-          plugins {
-              id "dev.flutter.flutter-plugin-loader" version "1.0.0"
-              id "com.android.application" version "8.5.0" apply false
-              id "org.jetbrains.kotlin.android" version "1.9.0" apply false
-          }
-
-          include ":app"
-          EOF
-
-      - name: Setup Keystore and Generate Build Gradle
+          flutter create . --org com.example --project-name acoustic_twin --platforms android
+          [ -f custom/AndroidManifest.xml ] && cp custom/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
+          mkdir -p android/app/src/main/kotlin/com/example/acoustic_twin
+          [ -f custom/MainActivity.kt ] && cp custom/MainActivity.kt android/app/src/main/kotlin/com/example/acoustic_twin/MainActivity.kt
+          sed -i 's/flutter\.minSdkVersion/26/g' android/app/build.gradle
+      - name: Setup Keystore for Signing
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: |
           keytool -genkey -v -keystore android/app/release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload -storepass android -keypass android -dname "CN=AcousticTwin, OU=Dev, O=Dev, L=City, S=State, C=US"
-          
-          cat <<EOF > android/app/build.gradle
-          plugins {
-              id "com.android.application"
-              id "kotlin-android"
-              id "dev.flutter.flutter-gradle-plugin"
-          }
-
-          def localProperties = new Properties()
-          def localPropertiesFile = rootProject.file('local.properties')
-          if (localPropertiesFile.exists()) {
-              localPropertiesFile.withReader('UTF-8') { reader -> localProperties.load(reader) }
-          }
-
-          def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
-          if (flutterVersionCode == null) { flutterVersionCode = '1' }
-
-          def flutterVersionName = localProperties.getProperty('flutter.versionName')
-          if (flutterVersionName == null) { flutterVersionName = '1.0' }
-
-          android {
-              namespace "com.rusuan82.acoustictwin"
-              compileSdk 35
-              ndkVersion flutter.ndkVersion
-
-              compileOptions {
-                  sourceCompatibility JavaVersion.VERSION_1_8
-                  targetCompatibility JavaVersion.VERSION_1_8
-              }
-
-              kotlinOptions { jvmTarget = '1.8' }
-
-              sourceSets { main.java.srcDirs += 'src/main/kotlin' }
-
-              defaultConfig {
-                  applicationId "com.rusuan82.acoustictwin"
-                  minSdkVersion 26
-                  targetSdkVersion 35
-                  versionCode flutterVersionCode.toInteger()
-                  versionName flutterVersionName
-              }
-
+          echo "storeFile=release-key.jks" > android/key.properties
+          echo "storePassword=android" >> android/key.properties
+          echo "keyAlias=upload" >> android/key.properties
+          echo "keyPassword=android" >> android/key.properties
+      - name: Configure Build Gradle for Signing
+        if: steps.check_flutter.outputs.flutter_exists == 'true'
+        run: |
+          python3 << 'EOF'
+          import re
+          with open('android/app/build.gradle', 'r') as f: content = f.read()
+          signing_config = '''
               signingConfigs {
                   release {
-                      storeFile file("release-key.jks")
-                      storePassword "android"
-                      keyAlias "upload"
-                      keyPassword "android"
+                      keyAlias project.findProperty("keyAlias") ?: "upload"
+                      keyPassword project.findProperty("keyPassword") ?: "android"
+                      storeFile file(project.findProperty("storeFile") ?: "release-key.jks")
+                      storePassword project.findProperty("storePassword") ?: "android"
                   }
               }
-
-              buildTypes {
-                  release {
-                      signingConfig signingConfigs.release
-                  }
-              }
-          }
-
-          flutter { source '../..' }
-          dependencies {}
+          '''
+          if 'signingConfigs' not in content:
+              content = content.replace('android {', 'android {' + signing_config, 1)
+          if 'signingConfig signingConfigs.release' not in content:
+              content = re.sub(r'(buildTypes\s*\{[^}]*release\s*\{)', r'\1\n            signingConfig signingConfigs.release', content)
+          with open('android/app/build.gradle', 'w') as f: f.write(content)
           EOF
-
       - name: Build AAB (Android App Bundle)
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: flutter build appbundle --release --no-tree-shake-icons
-
       - name: Upload AAB
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         uses: actions/upload-artifact@v4
