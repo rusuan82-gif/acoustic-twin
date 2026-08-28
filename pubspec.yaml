@@ -1,8 +1,7 @@
 name: acoustic_twin
 description: "A new Flutter project."
 publish_to: 'none'
-# ✅ IMPORTANT: Versiunea a fost crescută la +2 pentru Google Play Console
-version: 1.0.0+2
+version: 1.0.0+3
 
 environment:
   sdk: '>=3.4.3 <4.0.0'
