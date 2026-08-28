@@ -34,6 +34,8 @@ jobs:
           mkdir -p web-artifacts
           cp weights.js web-artifacts/weights.js
           if [ -f index.html ]; then cp index.html web-artifacts/index.html; fi
+          # ✅ FIX 404: Copiem și Politica de Confidențialitate
+          if [ -f privacy.html ]; then cp privacy.html web-artifacts/privacy.html; fi
 
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
@@ -88,12 +90,11 @@ jobs:
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: |
           flutter create . --org com.rusuan82 --project-name acoustictwin --platforms android
-          
           mkdir -p android/app/src/main/kotlin/com/rusuan82/acoustictwin
           if [ -f "custom/MainActivity.kt" ]; then cp custom/MainActivity.kt android/app/src/main/kotlin/com/rusuan82/acoustictwin/MainActivity.kt; fi
           if [ -f "custom/AndroidManifest.xml" ]; then cp custom/AndroidManifest.xml android/app/src/main/AndroidManifest.xml; fi
 
-      # ✅ FIX CRITIC: Actualizare Gradle Wrapper la 8.7 (necesar pentru AGP 8.5+)
+      # ✅ FIX: Update Gradle Wrapper to 8.7 (Necesar pentru AGP 8.5+)
       - name: Update Gradle Wrapper to 8.7
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: |
