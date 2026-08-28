@@ -1,7 +1,8 @@
 name: acoustic_twin
-description: "AI Predictive Maintenance with Ultrasonic Sonar"
+description: "A new Flutter project."
 publish_to: 'none'
-version: 1.0.0+1
+# ✅ IMPORTANT: Versiunea a fost crescută la +2 pentru Google Play Console
+version: 1.0.0+2
 
 environment:
   sdk: '>=3.4.3 <4.0.0'
