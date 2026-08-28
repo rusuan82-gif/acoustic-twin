@@ -92,7 +92,6 @@ jobs:
           mkdir -p android/app/src/main/kotlin/com/example/acoustic_twin
           if [ -f custom/MainActivity.kt ]; then cp custom/MainActivity.kt android/app/src/main/kotlin/com/example/acoustic_twin/MainActivity.kt; fi
 
-      # ✅ ÎNLOCUIEȘTE build.gradle cu versiunea noastră corectă (fără regex!)
       - name: Apply Custom Build Gradle
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: |
@@ -101,7 +100,6 @@ jobs:
             echo "✅ build.gradle personalizat aplicat"
           fi
 
-      # ✅ Keystore: folosește-l pe cel din repo dacă există, altfel generează unul nou
       - name: Setup Keystore
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         run: |
@@ -109,13 +107,20 @@ jobs:
             echo "✅ Folosim keystore-ul salvat în repo"
             cp release-key.jks android/app/release-key.jks
           else
-            echo "⚠️ Prima rulare: generăm keystore nou"
+            echo "⚠️ Keystore lipsă din repo - generăm unul nou"
             keytool -genkey -v -keystore android/app/release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload -storepass android -keypass android -dname "CN=AcousticTwin, OU=Dev, O=Dev, L=City, S=State, C=US"
           fi
           echo "storeFile=release-key.jks" > android/key.properties
           echo "storePassword=android" >> android/key.properties
           echo "keyAlias=upload" >> android/key.properties
           echo "keyPassword=android" >> android/key.properties
+
+      # ✅ NOU: Exportăm certificatul PEM (necesar pentru resetarea cheii de upload în Play Console)
+      - name: Export Upload Certificate (PEM)
+        if: steps.check_flutter.outputs.flutter_exists == 'true'
+        run: |
+          keytool -exportcert -keystore android/app/release-key.jks -alias upload -storepass android -rfc -file upload-cert.pem
+          echo "✅ Certificat PEM exportat"
 
       - name: Build AAB (Android App Bundle)
         if: steps.check_flutter.outputs.flutter_exists == 'true'
@@ -128,10 +133,17 @@ jobs:
           name: acoustic-twin-aab
           path: build/app/outputs/bundle/release/app-release.aab
 
-      # ✅ Backup keystore ca să îl poți salva în repo pentru semnare consistentă
       - name: Upload Keystore Backup
         if: steps.check_flutter.outputs.flutter_exists == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: keystore-backup
           path: android/app/release-key.jks
+
+      # ✅ NOU: Upload certificat PEM
+      - name: Upload PEM Certificate
+        if: steps.check_flutter.outputs.flutter_exists == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: upload-cert
+          path: upload-cert.pem
