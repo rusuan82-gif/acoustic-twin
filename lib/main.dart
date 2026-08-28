@@ -27,7 +27,6 @@ class SonicSonar {
       }
 
       final byteData = ByteData(44 + buffer.length * 2);
-      // WAV Header
       byteData.setUint8(0, 0x52); byteData.setUint8(1, 0x49); byteData.setUint8(2, 0x46); byteData.setUint8(3, 0x46);
       byteData.setUint32(4, 36 + buffer.length * 2, Endian.little);
       byteData.setUint8(8, 0x57); byteData.setUint8(9, 0x41); byteData.setUint8(10, 0x56); byteData.setUint8(11, 0x45);
@@ -290,7 +289,6 @@ class SpectrogramPainter extends CustomPainter {
         } else {
           cellColor = Color.lerp(Colors.yellow, Colors.red, (intensity - 0.66) * 3)!;
         }
-        
         canvas.drawRect(
           Rect.fromLTWH(x * cellWidth, size.height - (y + 1) * cellHeight, cellWidth + 1, cellHeight + 1),
           Paint()..color = cellColor.withOpacity(0.8),
